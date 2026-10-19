@@ -53,23 +53,9 @@ def _get_bill(bill_id: int, user_id: int) -> dict:
     return rows[0]
 
 
-def _get_promise(promise_id: int) -> dict:
-    return supabase.table("promises").select("*").eq("id", promise_id).execute().data[0]
-
-
 def _latest_message(bill_id: int) -> dict | None:
     rows = supabase.table("messages").select("*").eq("bill_id", bill_id).eq("is_latest", True).execute().data
     return rows[0] if rows else None
-
-
-def _promise_for(user_id: int, provider: str | None, text: str) -> dict:
-    """Reuse the current promise if it hasn't changed; otherwise start a new one from now."""
-    q = supabase.table("promises").select("*").eq("user_id", user_id)
-    q = q.eq("provider", provider) if provider else q.is_("provider", "null")
-    rows = q.order("valid_from", desc=True).limit(1).execute().data
-    if rows and rows[0]["text"].strip() == text.strip():
-        return rows[0]
-    return supabase.table("promises").insert({"user_id": user_id, "provider": provider, "text": text}).execute().data[0]
 
 
 def _draft(lines: list[dict], promise: str, last_draft: str = "", feedback: str = "") -> str:
@@ -102,8 +88,7 @@ def _bill_response(bill: dict) -> dict:
     for l in lines:
         l["fact"] = billing.fact(l)
         l["seen_before"] = seen[l["charge_key"]]
-    promise = _get_promise(bill["promise_id"]) if bill["promise_id"] else None
-    return {**bill, "promise": promise, "line_items": lines, "message": _latest_message(bill["id"])}
+    return {**bill, "line_items": lines, "message": _latest_message(bill["id"])}
 
 
 class UserIn(BaseModel):
@@ -134,7 +119,7 @@ def me(user_id: int = Depends(current_user)):
 
 
 @app.post("/api/bills")
-async def create_bill(file: UploadFile = File(...), expectation: str = Form(...), provider: str = Form(""),
+async def create_bill(file: UploadFile = File(...), promise: str = Form(...), provider: str = Form(""),
                       user_id: int = Depends(current_user)):
     if file.content_type not in ALLOWED:
         raise HTTPException(415, f"Upload a PDF or image, not {file.content_type}")
@@ -146,14 +131,13 @@ async def create_bill(file: UploadFile = File(...), expectation: str = Form(...)
     lines = billing.normalise(reading.get("lines", []))
     if not lines:
         raise HTTPException(422, "Couldn't read any lines from that bill")
-    billing.flag(lines, llm.match_promise(lines, expectation))
+    billing.flag(lines, llm.match_promise(lines, promise))
 
     provider = provider.strip() or reading.get("provider") or None
-    promise = _promise_for(user_id, provider, expectation)
     i = billing.printed_total_index(lines)
     bill = supabase.table("bills").insert({
         "user_id": user_id,
-        "promise_id": promise["id"],
+        "promise": promise,
         "provider": provider,
         "period_start": billing.parse_date(reading.get("period_start")),
         "period_end": billing.parse_date(reading.get("period_end")),
@@ -168,7 +152,7 @@ async def create_bill(file: UploadFile = File(...), expectation: str = Form(...)
     saved = supabase.table("line_items").insert([
         {"bill_id": bill["id"], **{c: _json(l[c]) for c in LINE_COLUMNS}} for l in lines
     ]).execute().data
-    _save_message(bill["id"], 1, _draft(saved, expectation), saved)
+    _save_message(bill["id"], 1, _draft(saved, promise), saved)
     return _bill_response(bill)
 
 
@@ -194,8 +178,7 @@ def revise_bill(bill_id: int, body: ReviseIn, user_id: int = Depends(current_use
         raise HTTPException(409, "Message already sent")
 
     lines = supabase.table("line_items").select("*").eq("bill_id", bill_id).order("id").execute().data
-    promise = _get_promise(bill["promise_id"])["text"] if bill["promise_id"] else ""
-    text = _draft(lines, promise, last["draft_text"] if last else "", body.feedback)
+    text = _draft(lines, bill["promise"], last["draft_text"] if last else "", body.feedback)
 
     # A new version of the message; the line items are facts and stay as they are.
     supabase.table("messages").update({"is_latest": False}).eq("bill_id", bill_id).eq("is_latest", True).execute()
@@ -235,11 +218,16 @@ def list_sent_messages(user_id: int = Depends(current_user)):
 
 @app.get("/api/promises")
 def list_promises(provider: str | None = None, user_id: int = Depends(current_user)):
-    """What was I promised, and when did it change?"""
-    q = supabase.table("promises").select("*").eq("user_id", user_id)
+    """What was I promised, and when did it change? One entry each time a provider's promise changed."""
+    q = supabase.table("bills").select("id, provider, promise, uploaded_at").eq("user_id", user_id)
     if provider:
         q = q.eq("provider", provider)
-    return q.order("valid_from", desc=True).execute().data
+    last, changes = {}, []
+    for b in q.order("uploaded_at").execute().data:
+        if last.get(b["provider"]) != b["promise"].strip():
+            last[b["provider"]] = b["promise"].strip()
+            changes.append({"provider": b["provider"], "promise": b["promise"], "since": b["uploaded_at"], "bill_id": b["id"]})
+    return changes[::-1]
 
 
 @app.get("/api/charges/{charge_key}")

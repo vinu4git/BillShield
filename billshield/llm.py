@@ -56,11 +56,11 @@ def read_bill(data: bytes, content_type: str) -> dict:
     return out
 
 
-def match_promise(lines: list[dict], expectation: str) -> list[dict]:
+def match_promise(lines: list[dict], promise: str) -> list[dict]:
     listing = "\n".join(f"{i}. {l['description']} | {l['amount']}" for i, l in enumerate(lines))
     out = _chat(TEXT_MODEL, [
         {"role": "system", "content": MATCH_PROMPT},
-        {"role": "user", "content": f"PROMISE:\n{expectation}\n\nBILL LINES:\n{listing}"},
+        {"role": "user", "content": f"PROMISE:\n{promise}\n\nBILL LINES:\n{listing}"},
     ])
     return out.get("lines", [])
 

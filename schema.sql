@@ -1,5 +1,5 @@
 -- Run once in the Supabase SQL editor.
--- USER -> PROMISE, USER -> BILL -> LINE_ITEM, BILL -> MESSAGE -> (MESSAGE_LINE_ITEM) -> LINE_ITEM
+-- USER -> BILL -> LINE_ITEM, BILL -> MESSAGE -> (MESSAGE_LINE_ITEM) -> LINE_ITEM
 
 create table users (
   id bigint generated always as identity primary key,
@@ -9,20 +9,10 @@ create table users (
   created_at timestamptz default now()
 );
 
--- What they were promised. A new row when the promise changes, so history is kept.
-create table promises (
-  id bigint generated always as identity primary key,
-  user_id bigint not null references users(id),
-  provider text,                          -- e.g. Airtel, BESCOM
-  text text not null,                     -- in their words
-  valid_from timestamptz not null default now(),
-  created_at timestamptz default now()
-);
-
 create table bills (
   id bigint generated always as identity primary key,
   user_id bigint not null references users(id),
-  promise_id bigint references promises(id),
+  promise text not null,                  -- what they were promised for this bill, in their words
   provider text,
   period_start date,
   period_end date,
@@ -73,7 +63,7 @@ create table message_line_items (
   primary key (message_id, line_item_id)
 );
 
-create index promises_user_provider on promises (user_id, provider, valid_from desc);
+create index bills_user_provider on bills (user_id, provider, uploaded_at);
 create index line_items_charge_key on line_items (charge_key);
 create index messages_bill_latest on messages (bill_id) where is_latest;
 

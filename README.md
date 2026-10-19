@@ -28,7 +28,7 @@ schema.sql           tables + storage bucket, run once in Supabase
 
 ## Data
 
-`users` → `promises` (a new row when the promise changes) and `users` → `bills` → `line_items` (facts, written once).
+`users` → `bills` → `line_items` (facts, written once). Each bill keeps the promise it was checked against, so promise history comes from the bills themselves.
 `bills` → `messages` (a new version on each Revise) → `message_line_items` → `line_items`: the link that shows which lines a sent message disputes.
 
 ## API
@@ -39,13 +39,13 @@ Every route except `POST /api/users` needs `Authorization: Bearer <token>`.
 |---|---|---|---|
 | POST | `/api/users` | `{"name", "email"}` | the user and their token (creates or finds by email) |
 | GET | `/api/me` | | the signed-in user |
-| POST | `/api/bills` | multipart `file`, `expectation`, optional `provider` | bill + promise + line items + latest message |
+| POST | `/api/bills` | multipart `file`, `promise`, optional `provider` | bill + line items + latest message |
 | GET | `/api/bills` | | your bills, newest first |
-| GET | `/api/bills/{id}` | | bill + promise + line items + latest message |
+| GET | `/api/bills/{id}` | | bill + line items + latest message |
 | POST | `/api/bills/{id}/revise` | `{"feedback"}` | a new message version |
 | POST | `/api/bills/{id}/accept` | `{"message"}` | message marked sent, with `words_changed` |
 | GET | `/api/messages` | | sent messages and the lines they dispute |
-| GET | `/api/promises?provider=` | | promise history, newest first |
+| GET | `/api/promises?provider=` | | each time a provider's promise changed, newest first |
 | GET | `/api/charges/{charge_key}` | | every bill a charge appeared on |
 
 ## Setup
