@@ -20,7 +20,7 @@ def money(value) -> Decimal:
 
 
 def fmt(d: Decimal) -> str:
-    return f"₹{d:,.2f}"
+    return f"{'−' if d < 0 else ''}₹{abs(d):,.2f}"
 
 
 def parse_date(value) -> str | None:
@@ -37,7 +37,7 @@ def charge_key(description: str) -> str:
 
 
 def normalise(lines: list[dict]) -> list[dict]:
-    """Turn the model's reading into rows shaped like line_items."""
+    """Turn the model's reading into rows shaped like line_items. Amounts are signed: credits are negative."""
     out = []
     for l in lines:
         description = mask(str(l.get("description", "")))
@@ -46,19 +46,21 @@ def normalise(lines: list[dict]) -> list[dict]:
             quantity = Decimal(str(l.get("quantity") or 1))
         except InvalidOperation:
             quantity = Decimal(1)
+        amount = money(l.get("amount"))
+        if kind == "discount" and amount > 0:
+            amount = -amount  # "Discount 50.00" takes 50 off
         out.append({
             "description": description,
             "charge_key": charge_key(description),
             "kind": kind,
             "quantity": quantity,
-            "amount": money(l.get("amount")),
+            "amount": amount,
         })
     return out
 
 
 def computed_total(lines: list[dict]) -> Decimal:
-    return sum((-l["amount"] if l["kind"] == "discount" else l["amount"]
-                for l in lines if l["kind"] not in SUMS), ZERO)
+    return sum((money(l["amount"]) for l in lines if l["kind"] not in SUMS), ZERO)
 
 
 def printed_total_index(lines: list[dict]) -> int | None:
@@ -70,31 +72,56 @@ def printed_total_index(lines: list[dict]) -> int | None:
     return None
 
 
+def check_sums(lines: list[dict]) -> None:
+    """Check every printed subtotal and total against the lines above it.
+
+    A printed sum is right if it equals any of: the lines since the previous sum (a section),
+    the previous printed sum plus those lines (a running total), or every line so far.
+    """
+    section, so_far, previous = ZERO, ZERO, None
+    for l in lines:
+        amount = money(l["amount"])
+        if l["kind"] not in SUMS:
+            section += amount
+            so_far += amount
+            continue
+        accepted = {section, so_far} | ({previous + section} if previous is not None else set())
+        if amount not in accepted:
+            expected = so_far if l["kind"] == "total" else section
+            l.update(is_flagged=True, flag_reason="total_mismatch", expected_amount=expected, difference=amount - expected)
+        section, previous = ZERO, amount
+
+
+def promised_price(l: dict, m: dict) -> Decimal | None:
+    """What the promise says this line should cost. A rate is multiplied here, never by the model."""
+    if m.get("promised_rate") is not None:
+        return (money(m["promised_rate"]) * Decimal(str(l["quantity"]))).quantize(CENT)
+    if m.get("promised_amount") is not None:
+        return money(m["promised_amount"])
+    return None
+
+
 def flag(lines: list[dict], matches: list[dict]) -> list[dict]:
     """Set is_flagged, flag_reason, expected_amount, difference and plain_words on each line.
 
     YOUR CALL: a charge the promise doesn't cover is *unexplained*, not *wrong*.
+    Never flagged as unexplained: ₹0 lines, credits, taxes, statutory charges and carried-over
+    balances, unless the model reads the promise as ruling them out.
     """
     by_index = {m.get("index"): m for m in matches}
     for i, l in enumerate(lines):
         m = by_index.get(i, {})
         l.update(plain_words=m.get("plain"), is_flagged=False, flag_reason=None, expected_amount=None, difference=None)
-        if l["kind"] in SUMS or l["kind"] == "discount":
+        amount = money(l["amount"])
+        if l["kind"] in SUMS or amount <= 0:
             continue
-        promised = m.get("promised_amount")
-        if promised is not None and money(promised) != l["amount"]:
-            expected = money(promised)
-            l.update(is_flagged=True, flag_reason="promise_mismatch",
-                     expected_amount=expected, difference=l["amount"] - expected)
-        elif m.get("promised") is False:
+        status = m.get("status", "covered")
+        expected = promised_price(l, m)
+        if expected is not None and expected != amount:
+            l.update(is_flagged=True, flag_reason="promise_mismatch", expected_amount=expected, difference=amount - expected)
+        elif status == "contradicts" or (status == "not_covered" and l["kind"] != "tax"):
             l.update(is_flagged=True, flag_reason="unexplained")
-
-    i = printed_total_index(lines)
-    if i is not None:
-        total = computed_total(lines)
-        if lines[i]["amount"] != total:
-            lines[i].update(is_flagged=True, flag_reason="total_mismatch",
-                            expected_amount=total, difference=lines[i]["amount"] - total)
+    check_sums(lines)
     return lines
 
 
@@ -104,18 +131,21 @@ def fact(l: dict) -> str | None:
     expected = money(l["expected_amount"]) if l.get("expected_amount") is not None else None
     diff = abs(money(l["difference"])) if l.get("difference") is not None else None
     if l.get("flag_reason") == "total_mismatch":
-        return f"The bill total is {fmt(amount)} but the lines add up to {fmt(expected)}, a difference of {fmt(diff)}."
+        return f"'{desc}' is printed as {fmt(amount)} but the lines add up to {fmt(expected)}, a difference of {fmt(diff)}."
     if l.get("flag_reason") == "promise_mismatch":
-        return f"'{desc}' is charged at {fmt(amount)} but was promised at {fmt(expected)}, a difference of {fmt(diff)}."
+        quantity = Decimal(str(l.get("quantity") or 1)).normalize()
+        promised = f"the promised rate for {quantity:f} units comes to {fmt(expected)}" if quantity != 1 \
+            else f"was promised at {fmt(expected)}"
+        return f"'{desc}' is charged at {fmt(amount)} but {promised}, a difference of {fmt(diff)}."
     if l.get("flag_reason") == "unexplained":
         return f"'{desc}' for {fmt(amount)} is not part of what was promised and is unexplained."
     return None
 
 
 def all_clear(lines: list[dict]) -> str:
-    items = [l for l in lines if l["kind"] not in SUMS]
-    added = sum((money(l["amount"]) for l in items if l["kind"] != "discount"), ZERO)
-    taken = sum((money(l["amount"]) for l in items if l["kind"] == "discount"), ZERO)
+    items = [money(l["amount"]) for l in lines if l["kind"] not in SUMS]
+    added = sum((a for a in items if a > 0), ZERO)
+    taken = -sum((a for a in items if a < 0), ZERO)
     return (f"Every line checks out. Charges {fmt(added)} minus credits {fmt(taken)} "
             f"equals {fmt(added - taken)}, which matches the bill and the promise.")
 

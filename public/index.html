@@ -117,9 +117,9 @@ function render(bill) {
   $("lines").replaceChildren(...bill.line_items.map((l, i) => {
     const tr = document.createElement("tr");
     if (l.is_flagged) tr.className = "flag";
-    const sign = l.kind === "discount" ? "−" : "";
+    const amount = Number(l.amount);
     const seen = l.seen_before ? `${l.seen_before} earlier bill${l.seen_before > 1 ? "s" : ""}` : "";
-    for (const [text, cls] of [[i + 1], [l.description], [`${sign}₹${Number(l.amount).toFixed(2)}`, "amt"],
+    for (const [text, cls] of [[i + 1], [l.description], [`${amount < 0 ? "−" : ""}₹${Math.abs(amount).toFixed(2)}`, "amt"],
                                [l.fact || l.plain_words || ""], [seen]]) {
       const td = Object.assign(document.createElement("td"), {textContent: text});
       if (cls) td.className = cls;

@@ -16,15 +16,26 @@ Return JSON: {"provider": str | null, "period_start": "YYYY-MM-DD" | null, "peri
 "due_date": "YYYY-MM-DD" | null, "lines": [{"description": str, "quantity": number, "amount": number,
 "kind": "charge" | "tax" | "discount" | "subtotal" | "total"}]}
 - provider is the company that issued the bill, e.g. Airtel or BESCOM.
-- amount is the number printed on that line, always positive.
+- quantity is the number of units the line charges for (kWh, kW, months, items) as printed; 1 if none.
+- amount is the number printed on that line, copied exactly, keeping a minus sign if one is printed.
 - kind "discount" is any credit, rebate or amount taken off.
 - kind "subtotal" or "total" is a printed sum of other lines.
 - Leave out account numbers, phone numbers, names and addresses."""
 
 MATCH_PROMPT = """You compare bill lines to what the customer was promised. Do not do any arithmetic.
-For each line, by its index, say whether the promise covers it and, if the promise states an amount for it,
-copy that amount exactly as written in the promise. Also rewrite the line in plain words.
-Return JSON: {"lines": [{"index": int, "plain": str, "promised": bool, "promised_amount": number | null}]}"""
+For each line, by its index, rewrite it in plain words and give it one status:
+- "covered": the promise mentions this charge or plainly includes it.
+- "statutory": a tax, duty, government or regulator-set charge or adjustment (GST, electricity duty,
+  surcharges, fuel cost adjustment, true-up charges), or a rounding adjustment.
+- "carried_over": not a new charge: arrears, previous balance, payments received, bill corrections.
+- "contradicts": the promise rules this charge out (e.g. "no add-on packs" and an add-on pack, "GST included"
+  and a separate GST line).
+- "not_covered": none of the above.
+If the promise states a price for the line, copy it exactly as written, never multiplied:
+- promised_rate: a price per unit (per kWh, per kW, per month of a multi-month line), else null.
+- promised_amount: a flat price for the whole line, else null.
+Return JSON: {"lines": [{"index": int, "plain": str, "status": str,
+"promised_amount": number | null, "promised_rate": number | null}]}"""
 
 MESSAGE_PROMPT = """Write a short, polite message the customer can send to the company disputing the facts below.
 Use the customer's own tone from their promise text. Use ONLY the amounts that appear in the facts, written exactly
@@ -57,7 +68,7 @@ def read_bill(data: bytes, content_type: str) -> dict:
 
 
 def match_promise(lines: list[dict], promise: str) -> list[dict]:
-    listing = "\n".join(f"{i}. {l['description']} | {l['amount']}" for i, l in enumerate(lines))
+    listing = "\n".join(f"{i}. {l['description']} | qty {l['quantity']} | {l['amount']}" for i, l in enumerate(lines))
     out = _chat(TEXT_MODEL, [
         {"role": "system", "content": MATCH_PROMPT},
         {"role": "user", "content": f"PROMISE:\n{promise}\n\nBILL LINES:\n{listing}"},
