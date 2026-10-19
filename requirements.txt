@@ -1,0 +1,6 @@
+fastapi
+python-dotenv
+python-multipart
+requests
+pypdf
+supabase==2.33.0

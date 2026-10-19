@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BillShield</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:52rem;margin:2rem auto;padding:0 1rem;color:#222}
+  label{display:block;margin:1rem 0 .3rem;font-weight:600}
+  textarea{width:100%;box-sizing:border-box;font:inherit;padding:.5rem}
+  button{padding:.5rem 1.2rem;margin:.8rem .5rem 0 0;font:inherit;cursor:pointer}
+  table{width:100%;border-collapse:collapse;margin-top:1rem}
+  th,td{border:1px solid #ccc;padding:.4rem .6rem;text-align:left;vertical-align:top}
+  td.amt{text-align:right;white-space:nowrap}
+  tr.flag{background:#fff3cd}
+  #status{margin-top:1rem;color:#555;white-space:pre-wrap}
+  .hidden{display:none}
+</style>
+
+<h1>BillShield</h1>
+
+<form id="upload">
+  <label for="file">Bill (PDF or photo)</label>
+  <input id="file" name="file" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" required>
+  <label for="expectation">What were you promised?</label>
+  <textarea id="expectation" name="expectation" rows="4" required
+    placeholder="₹499/month unlimited plan, no add-on packs, GST included"></textarea>
+  <button type="submit">Submit</button>
+</form>
+
+<div id="status"></div>
+
+<section id="result" class="hidden">
+  <table>
+    <thead><tr><th>#</th><th>Description</th><th>Amount</th><th>Message</th></tr></thead>
+    <tbody id="lines"></tbody>
+  </table>
+  <label for="message">Proposed message to the company</label>
+  <textarea id="message" rows="10"></textarea>
+  <label for="feedback">What should change? (for Revise)</label>
+  <textarea id="feedback" rows="2" placeholder="Shorter, firmer, mention I've paid on time for 2 years"></textarea>
+  <button id="revise">Revise</button>
+  <button id="accept">Accept</button>
+</section>
+
+<script>
+let billId = null;
+const $ = id => document.getElementById(id);
+
+async function call(url, opts) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(`Error ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+function render(bill) {
+  billId = bill.id;
+  $("lines").replaceChildren(...bill.line_items.map((l, i) => {
+    const tr = document.createElement("tr");
+    if (l.is_flagged) tr.className = "flag";
+    const sign = l.add_deduct ? "" : "−";
+    for (const [text, cls] of [[i + 1], [l.description], [`${sign}₹${Number(l.amount).toFixed(2)}`, "amt"], [l.message || ""]]) {
+      const td = Object.assign(document.createElement("td"), {textContent: text});
+      if (cls) td.className = cls;
+      tr.append(td);
+    }
+    return tr;
+  }));
+  $("message").value = bill.final_message || "";
+  $("result").classList.remove("hidden");
+  const accepted = bill.status === "A";
+  $("revise").disabled = $("accept").disabled = accepted;
+  $("status").textContent = accepted ? `Accepted. ${bill.words_changed} words changed. Now send it.` : "";
+}
+
+async function run(label, fn) {
+  $("status").textContent = label;
+  try { render(await fn()); } catch (e) { $("status").textContent = e.message; }
+}
+
+$("upload").onsubmit = e => {
+  e.preventDefault();
+  run("Reading your bill…", () => call("/api/bills", {method: "POST", body: new FormData(e.target)}));
+};
+
+$("revise").onclick = () => run("Rewriting…", () => call(`/api/bills/${billId}/revise`, {
+  method: "POST", headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({feedback: $("feedback").value}),
+}));
+
+$("accept").onclick = () => run("Saving…", () => call(`/api/bills/${billId}/accept`, {
+  method: "POST", headers: {"Content-Type": "application/json"},
+  body: JSON.stringify({message: $("message").value}),
+}));
+</script>
