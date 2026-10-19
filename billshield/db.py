@@ -15,8 +15,3 @@ def upload_bill_file(user_id: int, bill_id: int, filename: str, data: bytes, con
     path = f"{user_id}/{bill_id}/{filename}"
     supabase.storage.from_(BUCKET).upload(path, data, {"content-type": content_type, "upsert": "true"})
     return path
-
-
-def latest_line_items(bill_id: int) -> list[dict]:
-    return supabase.table("line_items").select("*") \
-        .eq("bill_id", bill_id).eq("is_latest", True).order("id").execute().data

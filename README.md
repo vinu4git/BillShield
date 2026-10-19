@@ -10,7 +10,7 @@ Upload a bill (PDF or photo) and what you were promised. BillShield reads every 
 |---|---|
 | Totals, differences from the promise | Reading the bill into lines |
 | Which lines get flagged | Matching each line to the promise, in plain words |
-| Masking before saving | The message, in their tone |
+| Masking before saving, `charge_key` | The message, in their tone |
 | Words changed before accepting | |
 
 **No-go:** the model never states an amount code didn't compute. `billing.only_known_numbers` checks every number in a generated message against the code-written facts; if one doesn't match, the fact itself is used instead.
@@ -26,19 +26,27 @@ public/index.html    the page (served by Vercel's CDN, or by FastAPI locally)
 schema.sql           tables + storage bucket, run once in Supabase
 ```
 
+## Data
+
+`users` → `promises` (a new row when the promise changes) and `users` → `bills` → `line_items` (facts, written once).
+`bills` → `messages` (a new version on each Revise) → `message_line_items` → `line_items`: the link that shows which lines a sent message disputes.
+
 ## API
 
 | Method | Path | In | Out |
 |---|---|---|---|
-| POST | `/api/bills` | multipart `file`, `expectation` | bill + latest line items |
+| POST | `/api/bills` | multipart `file`, `expectation`, optional `provider` | bill + promise + line items + latest message |
 | GET | `/api/bills` | | your bills, newest first |
-| GET | `/api/bills/{id}` | | bill + latest line items |
-| POST | `/api/bills/{id}/revise` | `{"feedback"}` | new version of line items + message |
-| POST | `/api/bills/{id}/accept` | `{"message"}` | bill with `status = A`, `words_changed` |
+| GET | `/api/bills/{id}` | | bill + promise + line items + latest message |
+| POST | `/api/bills/{id}/revise` | `{"feedback"}` | a new message version |
+| POST | `/api/bills/{id}/accept` | `{"message"}` | message marked sent, with `words_changed` |
+| GET | `/api/messages` | | sent messages and the lines they dispute |
+| GET | `/api/promises?provider=` | | promise history, newest first |
+| GET | `/api/charges/{charge_key}` | | every bill a charge appeared on |
 
 ## Setup
 
-1. Create a Supabase project and run `schema.sql` in the SQL editor.
+1. Create a Supabase project and run `schema.sql` in the SQL editor. If you ran an earlier version, drop the old tables first.
 2. Copy the env file and fill it in:
 
 ```bash

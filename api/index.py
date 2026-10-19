@@ -1,4 +1,6 @@
+from collections import Counter
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -6,40 +8,19 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from billshield import billing, llm
-from billshield.db import latest_line_items, supabase, upload_bill_file
+from billshield.db import supabase, upload_bill_file
 
 USER_ID = 1  # hardcoded until auth lands
 ALLOWED = {"application/pdf", "image/png", "image/jpeg", "image/webp"}
 MAX_BYTES = 4 * 1024 * 1024  # Vercel rejects request bodies over 4.5 MB
+LINE_COLUMNS = ("description", "charge_key", "kind", "quantity", "amount", "is_flagged",
+                "flag_reason", "expected_amount", "difference", "plain_words")
 
 app = FastAPI(title="BillShield")
 
 
-def _draft(lines: list[dict], expectation: str, feedback: str = "") -> tuple[list[dict], str]:
-    """Flag lines in code, then let the model word it. Returns (messages per line, final message)."""
-    facts = billing.find_issues(lines, llm.match_promise(lines, expectation))
-    if not facts:
-        return [], billing.all_clear(lines)
-
-    facts_text = " ".join(f["fact"] for f in facts)
-    out = llm.write_messages(facts, expectation, feedback)
-    by_index = {m.get("index"): m.get("message", "") for m in out.get("line_messages", [])}
-
-    line_messages = []
-    for f in facts:
-        msg = by_index.get(f["index"], "")
-        # Fall back to the code-written fact if the model invented a number.
-        line_messages.append({"index": f["index"], "message": msg if billing.only_known_numbers(msg, f["fact"]) else f["fact"]})
-
-    final = out.get("final_message", "")
-    if not final or not billing.only_known_numbers(final, facts_text):
-        final = "Hello,\n\nI'd like to dispute the following on my bill:\n\n" + \
-                "\n".join(f"- {f['fact']}" for f in facts) + "\n\nPlease correct this and confirm.\n\nThank you."
-    return line_messages, billing.mask(final)
-
-
-def _bill_response(bill: dict) -> dict:
-    return {**bill, "line_items": latest_line_items(bill["id"])}
+def _json(value):
+    return str(value) if isinstance(value, Decimal) else value
 
 
 def _get_bill(bill_id: int) -> dict:
@@ -49,36 +30,94 @@ def _get_bill(bill_id: int) -> dict:
     return rows[0]
 
 
+def _get_promise(promise_id: int) -> dict:
+    return supabase.table("promises").select("*").eq("id", promise_id).execute().data[0]
+
+
+def _latest_message(bill_id: int) -> dict | None:
+    rows = supabase.table("messages").select("*").eq("bill_id", bill_id).eq("is_latest", True).execute().data
+    return rows[0] if rows else None
+
+
+def _promise_for(provider: str | None, text: str) -> dict:
+    """Reuse the current promise if it hasn't changed; otherwise start a new one from now."""
+    q = supabase.table("promises").select("*").eq("user_id", USER_ID)
+    q = q.eq("provider", provider) if provider else q.is_("provider", "null")
+    rows = q.order("valid_from", desc=True).limit(1).execute().data
+    if rows and rows[0]["text"].strip() == text.strip():
+        return rows[0]
+    return supabase.table("promises").insert({"user_id": USER_ID, "provider": provider, "text": text}).execute().data[0]
+
+
+def _draft(lines: list[dict], promise: str, last_draft: str = "", feedback: str = "") -> str:
+    """Code writes the facts; the model only words them. Any number it invents sends us back to the facts."""
+    facts = [f for l in lines if (f := billing.fact(l))]
+    if not facts:
+        return billing.all_clear(lines)
+    message = llm.write_message(facts, promise, last_draft, feedback)
+    if not message or not billing.only_known_numbers(message, " ".join(facts)):
+        message = billing.fallback_message(facts)
+    return billing.mask(message)
+
+
+def _save_message(bill_id: int, version: int, text: str, lines: list[dict]) -> dict:
+    message = supabase.table("messages").insert({"bill_id": bill_id, "version": version, "draft_text": text}) \
+        .execute().data[0]
+    disputed = [{"message_id": message["id"], "line_item_id": l["id"]} for l in lines if l["is_flagged"]]
+    if disputed:
+        supabase.table("message_line_items").insert(disputed).execute()
+    return message
+
+
+def _bill_response(bill: dict) -> dict:
+    lines = supabase.table("line_items").select("*").eq("bill_id", bill["id"]).order("id").execute().data
+    # "Has this charge shown up on my earlier bills?"
+    keys = list({l["charge_key"] for l in lines if l["charge_key"]})
+    earlier = supabase.table("line_items").select("charge_key, bills!inner(user_id)") \
+        .in_("charge_key", keys).lt("bill_id", bill["id"]).eq("bills.user_id", USER_ID).execute().data if keys else []
+    seen = Counter(r["charge_key"] for r in earlier)
+    for l in lines:
+        l["fact"] = billing.fact(l)
+        l["seen_before"] = seen[l["charge_key"]]
+    promise = _get_promise(bill["promise_id"]) if bill["promise_id"] else None
+    return {**bill, "promise": promise, "line_items": lines, "message": _latest_message(bill["id"])}
+
+
 @app.post("/api/bills")
-async def create_bill(file: UploadFile = File(...), expectation: str = Form(...)):
+async def create_bill(file: UploadFile = File(...), expectation: str = Form(...), provider: str = Form("")):
     if file.content_type not in ALLOWED:
         raise HTTPException(415, f"Upload a PDF or image, not {file.content_type}")
     data = await file.read()
     if len(data) > MAX_BYTES:
         raise HTTPException(413, "File is over 4 MB")
 
-    lines = billing.normalise(llm.extract_lines(data, file.content_type))
+    reading = llm.read_bill(data, file.content_type)
+    lines = billing.normalise(reading.get("lines", []))
     if not lines:
         raise HTTPException(422, "Couldn't read any lines from that bill")
+    billing.flag(lines, llm.match_promise(lines, expectation))
 
-    bill = supabase.table("bills").insert({"user_id": USER_ID, "expectation": expectation}).execute().data[0]
+    provider = provider.strip() or reading.get("provider") or None
+    promise = _promise_for(provider, expectation)
+    i = billing.printed_total_index(lines)
+    bill = supabase.table("bills").insert({
+        "user_id": USER_ID,
+        "promise_id": promise["id"],
+        "provider": provider,
+        "period_start": billing.parse_date(reading.get("period_start")),
+        "period_end": billing.parse_date(reading.get("period_end")),
+        "due_date": billing.parse_date(reading.get("due_date")),
+        "printed_total": _json(lines[i]["amount"]) if i is not None else None,
+        "computed_total": _json(billing.computed_total(lines)),
+    }).execute().data[0]
+
     path = upload_bill_file(USER_ID, bill["id"], file.filename or "bill", data, file.content_type)
+    bill = supabase.table("bills").update({"file_path": path}).eq("id", bill["id"]).execute().data[0]
 
-    line_messages, final = _draft(lines, expectation)
-    flagged = {m["index"]: m["message"] for m in line_messages}
-    supabase.table("line_items").insert([{
-        "bill_id": bill["id"],
-        "quantity": l["quantity"],
-        "description": l["description"],
-        "amount": str(l["amount"]),
-        "add_deduct": l["add_deduct"],
-        "computed": l["computed"],
-        "is_flagged": i in flagged,
-        "message": flagged.get(i),
-    } for i, l in enumerate(lines)]).execute()
-
-    bill = supabase.table("bills").update({"file_path": path, "final_message": final}) \
-        .eq("id", bill["id"]).execute().data[0]
+    saved = supabase.table("line_items").insert([
+        {"bill_id": bill["id"], **{c: _json(l[c]) for c in LINE_COLUMNS}} for l in lines
+    ]).execute().data
+    _save_message(bill["id"], 1, _draft(saved, expectation), saved)
     return _bill_response(bill)
 
 
@@ -99,29 +138,17 @@ class ReviseIn(BaseModel):
 @app.post("/api/bills/{bill_id}/revise")
 def revise_bill(bill_id: int, body: ReviseIn):
     bill = _get_bill(bill_id)
-    if bill["status"] == "A":
-        raise HTTPException(409, "Bill already accepted")
+    last = _latest_message(bill_id)
+    if last and last["status"] == "sent":
+        raise HTTPException(409, "Message already sent")
 
-    old = latest_line_items(bill_id)
-    lines = [{**l, "amount": billing.money(l["amount"])} for l in old]
-    line_messages, final = _draft(lines, bill["expectation"], body.feedback)
-    flagged = {m["index"]: m["message"] for m in line_messages}
+    lines = supabase.table("line_items").select("*").eq("bill_id", bill_id).order("id").execute().data
+    promise = _get_promise(bill["promise_id"])["text"] if bill["promise_id"] else ""
+    text = _draft(lines, promise, last["draft_text"] if last else "", body.feedback)
 
-    # New version of every line; the old ones stay as history.
-    supabase.table("line_items").update({"is_latest": False}).eq("bill_id", bill_id).eq("is_latest", True).execute()
-    supabase.table("line_items").insert([{
-        "bill_id": bill_id,
-        "quantity": l["quantity"],
-        "description": l["description"],
-        "amount": str(l["amount"]),
-        "add_deduct": l["add_deduct"],
-        "computed": l["computed"],
-        "is_flagged": i in flagged,
-        "message": flagged.get(i),
-        "version": l["version"] + 1,
-    } for i, l in enumerate(lines)]).execute()
-
-    bill = supabase.table("bills").update({"final_message": final}).eq("id", bill_id).execute().data[0]
+    # A new version of the message; the line items are facts and stay as they are.
+    supabase.table("messages").update({"is_latest": False}).eq("bill_id", bill_id).eq("is_latest", True).execute()
+    _save_message(bill_id, (last["version"] if last else 0) + 1, text, lines)
     return _bill_response(bill)
 
 
@@ -132,14 +159,44 @@ class AcceptIn(BaseModel):
 @app.post("/api/bills/{bill_id}/accept")
 def accept_bill(bill_id: int, body: AcceptIn):
     bill = _get_bill(bill_id)
-    changed = billing.words_changed(bill["final_message"] or "", body.message)
-    bill = supabase.table("bills").update({
-        "final_message": billing.mask(body.message),
-        "status": "A",
-        "words_changed": changed,
-        "accepted_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", bill_id).execute().data[0]
+    last = _latest_message(bill_id)
+    if not last:
+        raise HTTPException(404, "No message to accept")
+    if last["status"] == "sent":
+        raise HTTPException(409, "Message already sent")
+    supabase.table("messages").update({
+        "sent_text": billing.mask(body.message),
+        "words_changed": billing.words_changed(last["draft_text"], body.message),
+        "status": "sent",
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", last["id"]).execute()
     return _bill_response(bill)
+
+
+@app.get("/api/messages")
+def list_sent_messages():
+    """Which messages did I send, and about which line?"""
+    return supabase.table("messages") \
+        .select("id, bill_id, version, sent_text, words_changed, sent_at, bills!inner(provider, user_id), "
+                "message_line_items(line_items(id, description, amount, flag_reason))") \
+        .eq("status", "sent").eq("bills.user_id", USER_ID).order("sent_at", desc=True).execute().data
+
+
+@app.get("/api/promises")
+def list_promises(provider: str | None = None):
+    """What was I promised, and when did it change?"""
+    q = supabase.table("promises").select("*").eq("user_id", USER_ID)
+    if provider:
+        q = q.eq("provider", provider)
+    return q.order("valid_from", desc=True).execute().data
+
+
+@app.get("/api/charges/{charge_key}")
+def charge_history(charge_key: str):
+    """Has this charge shown up on my earlier bills?"""
+    return supabase.table("line_items") \
+        .select("id, description, amount, bill_id, bills!inner(provider, period_start, period_end, user_id)") \
+        .eq("charge_key", charge_key).eq("bills.user_id", USER_ID).order("bill_id").execute().data
 
 
 # Locally, serve the page from this same server so the page and the API share

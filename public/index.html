@@ -5,7 +5,7 @@
 <style>
   body{font-family:system-ui,sans-serif;max-width:52rem;margin:2rem auto;padding:0 1rem;color:#222}
   label{display:block;margin:1rem 0 .3rem;font-weight:600}
-  textarea{width:100%;box-sizing:border-box;font:inherit;padding:.5rem}
+  textarea,input:not([type=file]){width:100%;box-sizing:border-box;font:inherit;padding:.5rem}
   button{padding:.5rem 1.2rem;margin:.8rem .5rem 0 0;font:inherit;cursor:pointer}
   table{width:100%;border-collapse:collapse;margin-top:1rem}
   th,td{border:1px solid #ccc;padding:.4rem .6rem;text-align:left;vertical-align:top}
@@ -20,6 +20,8 @@
 <form id="upload">
   <label for="file">Bill (PDF or photo)</label>
   <input id="file" name="file" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" required>
+  <label for="provider">Company (optional)</label>
+  <input id="provider" name="provider" placeholder="Airtel">
   <label for="expectation">What were you promised?</label>
   <textarea id="expectation" name="expectation" rows="4" required
     placeholder="₹499/month unlimited plan, no add-on packs, GST included"></textarea>
@@ -30,7 +32,7 @@
 
 <section id="result" class="hidden">
   <table>
-    <thead><tr><th>#</th><th>Description</th><th>Amount</th><th>Message</th></tr></thead>
+    <thead><tr><th>#</th><th>Description</th><th>Amount</th><th>Why</th><th>Seen before</th></tr></thead>
     <tbody id="lines"></tbody>
   </table>
   <label for="message">Proposed message to the company</label>
@@ -56,19 +58,23 @@ function render(bill) {
   $("lines").replaceChildren(...bill.line_items.map((l, i) => {
     const tr = document.createElement("tr");
     if (l.is_flagged) tr.className = "flag";
-    const sign = l.add_deduct ? "" : "−";
-    for (const [text, cls] of [[i + 1], [l.description], [`${sign}₹${Number(l.amount).toFixed(2)}`, "amt"], [l.message || ""]]) {
+    const sign = l.kind === "discount" ? "−" : "";
+    const seen = l.seen_before ? `${l.seen_before} earlier bill${l.seen_before > 1 ? "s" : ""}` : "";
+    for (const [text, cls] of [[i + 1], [l.description], [`${sign}₹${Number(l.amount).toFixed(2)}`, "amt"],
+                               [l.fact || l.plain_words || ""], [seen]]) {
       const td = Object.assign(document.createElement("td"), {textContent: text});
       if (cls) td.className = cls;
       tr.append(td);
     }
     return tr;
   }));
-  $("message").value = bill.final_message || "";
+  const m = bill.message || {};
+  const sent = m.status === "sent";
+  $("message").value = (sent ? m.sent_text : m.draft_text) || "";
   $("result").classList.remove("hidden");
-  const accepted = bill.status === "A";
-  $("revise").disabled = $("accept").disabled = accepted;
-  $("status").textContent = accepted ? `Accepted. ${bill.words_changed} words changed. Now send it.` : "";
+  $("revise").disabled = $("accept").disabled = sent;
+  $("status").textContent = sent ? `Accepted. ${m.words_changed} words changed. Now send it.`
+                                 : m.version > 1 ? `Draft version ${m.version}` : "";
 }
 
 async function run(label, fn) {
