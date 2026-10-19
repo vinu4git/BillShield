@@ -1,10 +1,12 @@
+import re
+import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
 import requests
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -12,7 +14,6 @@ from pydantic import BaseModel
 from billshield import billing, llm
 from billshield.db import supabase, upload_bill_file
 
-USER_ID = 1  # hardcoded until auth lands
 ALLOWED = {"application/pdf", "image/png", "image/jpeg", "image/webp"}
 MAX_BYTES = 4 * 1024 * 1024  # Vercel rejects request bodies over 4.5 MB
 LINE_COLUMNS = ("description", "charge_key", "kind", "quantity", "amount", "is_flagged",
@@ -29,12 +30,24 @@ def groq_error(request: Request, exc: requests.HTTPError):
     return JSONResponse({"detail": f"Model call failed ({status}): {body}"}, status_code=502)
 
 
+def current_user(authorization: str = Header("")) -> int:
+    """The page sends `Authorization: Bearer <token>`; the token, not the id, says who you are."""
+    try:
+        token = str(uuid.UUID(authorization.removeprefix("Bearer ").strip()))
+    except ValueError:
+        raise HTTPException(401, "Sign in first")
+    rows = supabase.table("users").select("id").eq("token", token).execute().data
+    if not rows:
+        raise HTTPException(401, "Sign in first")
+    return rows[0]["id"]
+
+
 def _json(value):
     return str(value) if isinstance(value, Decimal) else value
 
 
-def _get_bill(bill_id: int) -> dict:
-    rows = supabase.table("bills").select("*").eq("id", bill_id).eq("user_id", USER_ID).execute().data
+def _get_bill(bill_id: int, user_id: int) -> dict:
+    rows = supabase.table("bills").select("*").eq("id", bill_id).eq("user_id", user_id).execute().data
     if not rows:
         raise HTTPException(404, "Bill not found")
     return rows[0]
@@ -49,14 +62,14 @@ def _latest_message(bill_id: int) -> dict | None:
     return rows[0] if rows else None
 
 
-def _promise_for(provider: str | None, text: str) -> dict:
+def _promise_for(user_id: int, provider: str | None, text: str) -> dict:
     """Reuse the current promise if it hasn't changed; otherwise start a new one from now."""
-    q = supabase.table("promises").select("*").eq("user_id", USER_ID)
+    q = supabase.table("promises").select("*").eq("user_id", user_id)
     q = q.eq("provider", provider) if provider else q.is_("provider", "null")
     rows = q.order("valid_from", desc=True).limit(1).execute().data
     if rows and rows[0]["text"].strip() == text.strip():
         return rows[0]
-    return supabase.table("promises").insert({"user_id": USER_ID, "provider": provider, "text": text}).execute().data[0]
+    return supabase.table("promises").insert({"user_id": user_id, "provider": provider, "text": text}).execute().data[0]
 
 
 def _draft(lines: list[dict], promise: str, last_draft: str = "", feedback: str = "") -> str:
@@ -84,7 +97,7 @@ def _bill_response(bill: dict) -> dict:
     # "Has this charge shown up on my earlier bills?"
     keys = list({l["charge_key"] for l in lines if l["charge_key"]})
     earlier = supabase.table("line_items").select("charge_key, bills!inner(user_id)") \
-        .in_("charge_key", keys).lt("bill_id", bill["id"]).eq("bills.user_id", USER_ID).execute().data if keys else []
+        .in_("charge_key", keys).lt("bill_id", bill["id"]).eq("bills.user_id", bill["user_id"]).execute().data if keys else []
     seen = Counter(r["charge_key"] for r in earlier)
     for l in lines:
         l["fact"] = billing.fact(l)
@@ -93,8 +106,36 @@ def _bill_response(bill: dict) -> dict:
     return {**bill, "promise": promise, "line_items": lines, "message": _latest_message(bill["id"])}
 
 
+class UserIn(BaseModel):
+    name: str
+    email: str
+
+
+EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+PUBLIC_USER = "id, name, email, token"
+
+
+@app.post("/api/users")
+def sign_in(body: UserIn):
+    """Create the user, or find them by email. Returns the token the page keeps."""
+    name, email = body.name.strip(), body.email.strip().lower()
+    if not name or not EMAIL.match(email):
+        raise HTTPException(422, "Enter your name and a valid email")
+    rows = supabase.table("users").select(PUBLIC_USER).eq("email", email).execute().data
+    if rows:
+        return supabase.table("users").update({"name": name}).eq("id", rows[0]["id"]).execute().data[0] \
+            if rows[0]["name"] != name else rows[0]
+    return supabase.table("users").insert({"name": name, "email": email}).execute().data[0]
+
+
+@app.get("/api/me")
+def me(user_id: int = Depends(current_user)):
+    return supabase.table("users").select("id, name, email").eq("id", user_id).execute().data[0]
+
+
 @app.post("/api/bills")
-async def create_bill(file: UploadFile = File(...), expectation: str = Form(...), provider: str = Form("")):
+async def create_bill(file: UploadFile = File(...), expectation: str = Form(...), provider: str = Form(""),
+                      user_id: int = Depends(current_user)):
     if file.content_type not in ALLOWED:
         raise HTTPException(415, f"Upload a PDF or image, not {file.content_type}")
     data = await file.read()
@@ -108,10 +149,10 @@ async def create_bill(file: UploadFile = File(...), expectation: str = Form(...)
     billing.flag(lines, llm.match_promise(lines, expectation))
 
     provider = provider.strip() or reading.get("provider") or None
-    promise = _promise_for(provider, expectation)
+    promise = _promise_for(user_id, provider, expectation)
     i = billing.printed_total_index(lines)
     bill = supabase.table("bills").insert({
-        "user_id": USER_ID,
+        "user_id": user_id,
         "promise_id": promise["id"],
         "provider": provider,
         "period_start": billing.parse_date(reading.get("period_start")),
@@ -121,7 +162,7 @@ async def create_bill(file: UploadFile = File(...), expectation: str = Form(...)
         "computed_total": _json(billing.computed_total(lines)),
     }).execute().data[0]
 
-    path = upload_bill_file(USER_ID, bill["id"], file.filename or "bill", data, file.content_type)
+    path = upload_bill_file(user_id, bill["id"], file.filename or "bill", data, file.content_type)
     bill = supabase.table("bills").update({"file_path": path}).eq("id", bill["id"]).execute().data[0]
 
     saved = supabase.table("line_items").insert([
@@ -132,13 +173,13 @@ async def create_bill(file: UploadFile = File(...), expectation: str = Form(...)
 
 
 @app.get("/api/bills")
-def list_bills():
-    return supabase.table("bills").select("*").eq("user_id", USER_ID).order("uploaded_at", desc=True).execute().data
+def list_bills(user_id: int = Depends(current_user)):
+    return supabase.table("bills").select("*").eq("user_id", user_id).order("uploaded_at", desc=True).execute().data
 
 
 @app.get("/api/bills/{bill_id}")
-def get_bill(bill_id: int):
-    return _bill_response(_get_bill(bill_id))
+def get_bill(bill_id: int, user_id: int = Depends(current_user)):
+    return _bill_response(_get_bill(bill_id, user_id))
 
 
 class ReviseIn(BaseModel):
@@ -146,8 +187,8 @@ class ReviseIn(BaseModel):
 
 
 @app.post("/api/bills/{bill_id}/revise")
-def revise_bill(bill_id: int, body: ReviseIn):
-    bill = _get_bill(bill_id)
+def revise_bill(bill_id: int, body: ReviseIn, user_id: int = Depends(current_user)):
+    bill = _get_bill(bill_id, user_id)
     last = _latest_message(bill_id)
     if last and last["status"] == "sent":
         raise HTTPException(409, "Message already sent")
@@ -167,8 +208,8 @@ class AcceptIn(BaseModel):
 
 
 @app.post("/api/bills/{bill_id}/accept")
-def accept_bill(bill_id: int, body: AcceptIn):
-    bill = _get_bill(bill_id)
+def accept_bill(bill_id: int, body: AcceptIn, user_id: int = Depends(current_user)):
+    bill = _get_bill(bill_id, user_id)
     last = _latest_message(bill_id)
     if not last:
         raise HTTPException(404, "No message to accept")
@@ -184,29 +225,29 @@ def accept_bill(bill_id: int, body: AcceptIn):
 
 
 @app.get("/api/messages")
-def list_sent_messages():
+def list_sent_messages(user_id: int = Depends(current_user)):
     """Which messages did I send, and about which line?"""
     return supabase.table("messages") \
         .select("id, bill_id, version, sent_text, words_changed, sent_at, bills!inner(provider, user_id), "
                 "message_line_items(line_items(id, description, amount, flag_reason))") \
-        .eq("status", "sent").eq("bills.user_id", USER_ID).order("sent_at", desc=True).execute().data
+        .eq("status", "sent").eq("bills.user_id", user_id).order("sent_at", desc=True).execute().data
 
 
 @app.get("/api/promises")
-def list_promises(provider: str | None = None):
+def list_promises(provider: str | None = None, user_id: int = Depends(current_user)):
     """What was I promised, and when did it change?"""
-    q = supabase.table("promises").select("*").eq("user_id", USER_ID)
+    q = supabase.table("promises").select("*").eq("user_id", user_id)
     if provider:
         q = q.eq("provider", provider)
     return q.order("valid_from", desc=True).execute().data
 
 
 @app.get("/api/charges/{charge_key}")
-def charge_history(charge_key: str):
+def charge_history(charge_key: str, user_id: int = Depends(current_user)):
     """Has this charge shown up on my earlier bills?"""
     return supabase.table("line_items") \
         .select("id, description, amount, bill_id, bills!inner(provider, period_start, period_end, user_id)") \
-        .eq("charge_key", charge_key).eq("bills.user_id", USER_ID).order("bill_id").execute().data
+        .eq("charge_key", charge_key).eq("bills.user_id", user_id).order("bill_id").execute().data
 
 
 # Locally, serve the page from this same server so the page and the API share

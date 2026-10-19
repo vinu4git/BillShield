@@ -3,8 +3,9 @@
 
 create table users (
   id bigint generated always as identity primary key,
-  name text,
-  email text unique,
+  name text not null,
+  email text not null unique,             -- lowercased by the API
+  token uuid not null unique default gen_random_uuid(),  -- the page sends this, never the id
   created_at timestamptz default now()
 );
 
@@ -79,6 +80,3 @@ create index messages_bill_latest on messages (bill_id) where is_latest;
 -- Private bucket for the uploaded bills.
 insert into storage.buckets (id, name, public) values ('bills', 'bills', false)
 on conflict (id) do nothing;
-
--- Hardcoded user until auth lands.
-insert into users (name, email) values ('Demo', 'demo@example.com');

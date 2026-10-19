@@ -33,8 +33,12 @@ schema.sql           tables + storage bucket, run once in Supabase
 
 ## API
 
+Every route except `POST /api/users` needs `Authorization: Bearer <token>`.
+
 | Method | Path | In | Out |
 |---|---|---|---|
+| POST | `/api/users` | `{"name", "email"}` | the user and their token (creates or finds by email) |
+| GET | `/api/me` | | the signed-in user |
 | POST | `/api/bills` | multipart `file`, `expectation`, optional `provider` | bill + promise + line items + latest message |
 | GET | `/api/bills` | | your bills, newest first |
 | GET | `/api/bills/{id}` | | bill + promise + line items + latest message |
@@ -46,7 +50,7 @@ schema.sql           tables + storage bucket, run once in Supabase
 
 ## Setup
 
-1. Create a Supabase project and run `schema.sql` in the SQL editor. If you ran an earlier version, drop the old tables first.
+1. Create a Supabase project and run `schema.sql` in the SQL editor. If you already ran an earlier version, run the files in `migrations/` in order instead.
 2. Copy the env file and fill it in:
 
 ```bash
@@ -84,6 +88,6 @@ Vercel finds the FastAPI `app` in `api/index.py` on its own and serves `public/`
 ## Flags
 
 - Vercel rejects request bodies over 4.5 MB, so uploads are capped at 4 MB.
-- `user_id = 1` is hardcoded until auth lands.
+- Sign-in is name + email, no password: anyone who knows your email can sign in as you. Fine for user testing; move to Supabase Auth (magic link) before real use.
 - Images go to `qwen/qwen3.8-27b` (vision); PDFs are read with `pypdf` and go to `openai/gpt-oss-120b`. Scanned PDFs with no text layer need to be uploaded as photos.
 - The bill file is stored in the private `bills` bucket. Line descriptions and messages are masked before saving.

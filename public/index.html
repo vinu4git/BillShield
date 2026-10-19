@@ -13,9 +13,24 @@
   tr.flag{background:#fff3cd}
   #status{margin-top:1rem;color:#555;white-space:pre-wrap}
   .hidden{display:none}
+  #who{color:#555;margin:-.5rem 0 1rem}
+  #who button{margin:0 0 0 .5rem;padding:.1rem .6rem}
 </style>
 
 <h1>BillShield</h1>
+
+<form id="signin" class="hidden">
+  <p>Tell us who you are so your bills and messages are saved to you.</p>
+  <label for="name">Your name</label>
+  <input id="name" name="name" autocomplete="name" required>
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" autocomplete="email" required>
+  <button type="submit">Continue</button>
+  <div id="signin-status"></div>
+</form>
+
+<main id="app" class="hidden">
+<div id="who"><span id="who-name"></span><button id="switch" type="button">Switch user</button></div>
 
 <form id="upload">
   <label for="file">Bill (PDF or photo)</label>
@@ -42,16 +57,60 @@
   <button id="revise">Revise</button>
   <button id="accept">Accept</button>
 </section>
+</main>
 
 <script>
 let billId = null;
+let token = null;
 const $ = id => document.getElementById(id);
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+};
 
-async function call(url, opts) {
-  const r = await fetch(url, opts);
+async function call(url, opts = {}) {
+  const r = await fetch(url, {...opts, headers: {...opts.headers, Authorization: `Bearer ${token}`}});
+  if (r.status === 401) { signOut(); throw new Error("Please sign in again."); }
   if (!r.ok) throw new Error(`Error ${r.status}: ${await r.text()}`);
   return r.json();
 }
+
+function showApp(user) {
+  $("who-name").textContent = `Signed in as ${user.name} (${user.email})`;
+  $("signin").classList.add("hidden");
+  $("app").classList.remove("hidden");
+}
+
+function signOut() {
+  token = null;
+  store.set("billshield_token", null);
+  billId = null;
+  $("result").classList.add("hidden");
+  $("status").textContent = "";
+  $("app").classList.add("hidden");
+  $("signin").classList.remove("hidden");
+}
+
+$("signin").onsubmit = async e => {
+  e.preventDefault();
+  $("signin-status").textContent = "Saving…";
+  const r = await fetch("/api/users", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({name: $("name").value, email: $("email").value})});
+  if (!r.ok) { $("signin-status").textContent = `Error ${r.status}: ${await r.text()}`; return; }
+  const user = await r.json();
+  token = user.token;
+  store.set("billshield_token", token);
+  $("signin-status").textContent = "";
+  showApp(user);
+};
+
+$("switch").onclick = signOut;
+
+(async () => {
+  token = store.get("billshield_token");
+  if (!token) return signOut();
+  try { showApp(await call("/api/me")); } catch { signOut(); }
+})();
 
 function render(bill) {
   billId = bill.id;
