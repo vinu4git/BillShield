@@ -3,7 +3,9 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+import requests
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -17,6 +19,14 @@ LINE_COLUMNS = ("description", "charge_key", "kind", "quantity", "amount", "is_f
                 "flag_reason", "expected_amount", "difference", "plain_words")
 
 app = FastAPI(title="BillShield")
+
+
+@app.exception_handler(requests.HTTPError)
+def groq_error(request: Request, exc: requests.HTTPError):
+    """Show the model provider's error, such as a 429 rate limit, instead of a bare 500."""
+    status = exc.response.status_code if exc.response is not None else 0
+    body = exc.response.text[:300] if exc.response is not None else str(exc)
+    return JSONResponse({"detail": f"Model call failed ({status}): {body}"}, status_code=502)
 
 
 def _json(value):

@@ -9,7 +9,7 @@ from pypdf import PdfReader
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 TEXT_MODEL = "openai/gpt-oss-120b"
-VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+VISION_MODEL = "qwen/qwen3.8-27b"  # Groq retired Llama 4 Scout
 
 EXTRACT_PROMPT = """Read this bill and list every line exactly as printed. Do not add anything up.
 Return JSON: {"provider": str | null, "period_start": "YYYY-MM-DD" | null, "period_end": "YYYY-MM-DD" | null,

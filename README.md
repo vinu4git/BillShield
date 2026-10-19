@@ -85,5 +85,5 @@ Vercel finds the FastAPI `app` in `api/index.py` on its own and serves `public/`
 
 - Vercel rejects request bodies over 4.5 MB, so uploads are capped at 4 MB.
 - `user_id = 1` is hardcoded until auth lands.
-- Images go to `meta-llama/llama-4-scout-17b-16e-instruct` (vision); PDFs are read with `pypdf` and go to `openai/gpt-oss-120b`. Scanned PDFs with no text layer need to be uploaded as photos.
+- Images go to `qwen/qwen3.8-27b` (vision); PDFs are read with `pypdf` and go to `openai/gpt-oss-120b`. Scanned PDFs with no text layer need to be uploaded as photos.
 - The bill file is stored in the private `bills` bucket. Line descriptions and messages are masked before saving.
