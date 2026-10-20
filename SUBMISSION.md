@@ -10,7 +10,20 @@ it was a bill from Anand. My classmate. He had booked an indigo flight. he saw t
 ![My notes](image-1.png)
 The message I wrote / did they send it / what they changed: One month back, I purchased this ticket from cleartrip and the total does not match the break up. Kindly check the same and share the details
 Anand wanted it to be changed to "check the bill and let me know if there are any discrepancies."
-Golden pairs (link): 
+Golden pairs (link): https://github.com/vinu4git/BillShield/tree/main/goldens (8 pairs of bill + promise → flags, facts and message; run `python goldens/run.py`, or `--live` to run them through the real model)
+
+| # | Pair | Input (promise → bill) | Golden output | Result |
+|---|---|---|---|---|
+| 1 | cleartrip-flight | "Airfare ₹8,010, taxes and airport fees extra" → Cleartrip fare summary, total ₹9,907 | Total checks out. Fuel Charge ₹800 flagged **unexplained** (airline-set, not government) | **FAIL**: code treats "fuel" as a government charge and never flags it |
+| 2 | airtel-addon-pack | "₹499/month, no add-on packs, GST extra" → plan ₹499 + VAS Pack ₹199 + GST | VAS Pack ₹199 flagged **unexplained**; phone number masked as [number] | pass |
+| 3 | broadband-price-hike | "₹399/month for 100 Mbps" → Broadband ₹449 + GST | **Wrong**: charged ₹449.00, promised ₹399.00, difference ₹50.00 | pass |
+| 4 | electricity-rate-times-units | "₹6.50 per unit" → 200 units charged ₹1,400 | **Wrong**: 200 × ₹6.50 = ₹1,300.00 (code multiplies), difference ₹100.00 | pass |
+| 5 | ott-all-clear-with-discount | "₹599/month, ₹50 loyalty discount, GST extra" → ₹599 − ₹50 + GST = ₹647.82 | No flags. All-clear message, not a complaint | pass |
+| 6 | total-off-by-two | "₹499/month, GST extra" → ₹499 + ₹89.82, printed total ₹590.82 | **Wrong**: total printed ₹590.82, lines add up to ₹588.82, difference ₹2.00 | pass |
+| 7 | cleartrip-misread | Same bill, but the reading missed the ₹354 User Development Fee | Lines miss the printed total by ₹354 (more than ₹5): ask the user to check the reading, no message drafted | pass |
+| 8 | bare-number-promise | "8010" | Follow-up: ask what the price was for before reading the bill | pass |
+
+**7 / 8 pass.** The one failure is the real bill from Move 1, and it's the Move 3 failure mode in action.
 
 MOVE 2, NEEDS FIRST
 Need list:
