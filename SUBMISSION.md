@@ -44,6 +44,7 @@ My call on wrong vs unexplained, and its failure mode:
 Failure mode: false negatives hidden as "statutory". A company add-on with a government-sounding name (e.g. "Regulatory Fee", "Fuel surcharge" on a plan that included it) gets waved through. And when the promise is vague, the model can mark a real extra as "covered".
 
 MOVE 4, THE DATA
+
 ![Table Design](image-3.png)
 users → bills → line_items (facts, written once, never versioned)
 bills → messages (a new version on each Revise; is_latest; draft_text vs sent_text; words_changed)
