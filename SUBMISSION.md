@@ -54,6 +54,9 @@ Each bill keeps the promise it was checked against, so a provider's promise hist
 
 
 MOVE 5, WATCH THEM
+
 Classmate: sent? words changed? Made it simpler
+
 Stranger: sent? words changed? He asked for revision
+
 The surprise: LLM considers each line item that is not mentioned in the promise as unexpected. Also image clarity sometime can jumble up the item and value.
