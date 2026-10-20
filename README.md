@@ -13,7 +13,9 @@ Upload a bill (PDF or photo) and what you were promised. BillShield reads every 
 | Masking before saving, `charge_key` | The message, in their tone |
 | Words changed before accepting | |
 
-**No-go:** the model never states an amount code didn't compute. `billing.only_known_numbers` checks every number in a generated message against the code-written facts; if one doesn't match, the fact itself is used instead.
+**No-go:** the model never states an amount code didn't compute. `billing.only_known_numbers` checks every number in a generated message against the code-written facts and the user's own promise text; if one doesn't match, the model gets one retry naming the number, then the fact itself is used instead.
+
+**Reading first:** if the lines we read miss a printed total by more than ₹5, or the taxes come to more than all the charges, no message is drafted. The user checks the amounts against their bill and confirms, or uploads a clearer photo. Gaps under ₹1 are accepted as the bill's rounding.
 
 ## Layout
 
@@ -42,6 +44,7 @@ Every route except `POST /api/users` needs `Authorization: Bearer <token>`.
 | POST | `/api/bills` | multipart `file`, `promise`, optional `provider` | bill + line items + latest message |
 | GET | `/api/bills` | | your bills, newest first |
 | GET | `/api/bills/{id}` | | bill + line items + latest message |
+| POST | `/api/bills/{id}/confirm` | | the user checked the reading: drafts the first message |
 | POST | `/api/bills/{id}/revise` | `{"feedback"}` | a new message version |
 | POST | `/api/bills/{id}/accept` | `{"message"}` | message marked sent, with `words_changed` |
 | GET | `/api/messages` | | sent messages and the lines they dispute |

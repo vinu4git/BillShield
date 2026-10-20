@@ -15,6 +15,8 @@
   .hidden{display:none}
   #who{color:#555;margin:-.5rem 0 1rem}
   #who button{margin:0 0 0 .5rem;padding:.1rem .6rem}
+  #check{background:#fff3cd;border:1px solid #e0c96b;padding:.8rem 1rem;margin-top:1rem}
+  #check ul{margin:.4rem 0}
 </style>
 
 <h1>BillShield</h1>
@@ -40,6 +42,7 @@
   <label for="promise">What were you promised?</label>
   <textarea id="promise" name="promise" rows="4" required
     placeholder="₹499/month unlimited plan, no add-on packs, GST included"></textarea>
+  <div id="promise-hint"></div>
   <button type="submit">Submit</button>
 </form>
 
@@ -50,12 +53,21 @@
     <thead><tr><th>#</th><th>Description</th><th>Amount</th><th>Why</th><th>Seen before</th></tr></thead>
     <tbody id="lines"></tbody>
   </table>
+  <div id="check" class="hidden">
+    <strong>Check these amounts against your bill before we write anything.</strong>
+    <ul id="doubts"></ul>
+    This usually means we misread the bill. If every amount above matches your bill, confirm and we'll
+    draft the message. If not, upload a clearer, upright photo.
+    <div><button id="confirm" type="button">The amounts match my bill</button></div>
+  </div>
+  <div id="drafting">
   <label for="message">Proposed message to the company</label>
   <textarea id="message" rows="10"></textarea>
   <label for="feedback">What should change? (for Revise)</label>
   <textarea id="feedback" rows="2" placeholder="Shorter, firmer, mention I've paid on time for 2 years"></textarea>
   <button id="revise">Revise</button>
   <button id="accept">Accept</button>
+  </div>
 </section>
 </main>
 
@@ -127,6 +139,10 @@ function render(bill) {
     }
     return tr;
   }));
+  const doubts = bill.reading_doubts || [];
+  $("doubts").replaceChildren(...doubts.map(d => Object.assign(document.createElement("li"), {textContent: d})));
+  $("check").classList.toggle("hidden", !doubts.length || !!bill.message);
+  $("drafting").classList.toggle("hidden", !bill.message);
   const m = bill.message || {};
   const sent = m.status === "sent";
   $("message").value = (sent ? m.sent_text : m.draft_text) || "";
@@ -141,10 +157,21 @@ async function run(label, fn) {
   try { render(await fn()); } catch (e) { $("status").textContent = e.message; }
 }
 
+// A bare "2000" says a price but not what it was for, so nothing on the bill can be matched to it.
+const bareNumber = /^\s*(?:rs\.?|inr|₹)?\s*[\d,]+(?:\.\d+)?\s*(?:\/-)?\s*$/i;
+
 $("upload").onsubmit = e => {
   e.preventDefault();
+  if (bareNumber.test($("promise").value)) {
+    $("promise-hint").textContent = "Tell us what that price was for, in a sentence, e.g. "
+      + "\"₹2,000 a month for the 3 kW plan, taxes extra\".";
+    return $("promise").focus();
+  }
+  $("promise-hint").textContent = "";
   run("Reading your bill…", () => call("/api/bills", {method: "POST", body: new FormData(e.target)}));
 };
+
+$("confirm").onclick = () => run("Writing the message…", () => call(`/api/bills/${billId}/confirm`, {method: "POST"}));
 
 $("revise").onclick = () => run("Rewriting…", () => call(`/api/bills/${billId}/revise`, {
   method: "POST", headers: {"Content-Type": "application/json"},

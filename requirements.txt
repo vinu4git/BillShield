@@ -3,4 +3,5 @@ python-dotenv
 python-multipart
 requests
 pypdf
+Pillow
 supabase==2.33.0

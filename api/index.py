@@ -59,12 +59,17 @@ def _latest_message(bill_id: int) -> dict | None:
 
 
 def _draft(lines: list[dict], promise: str, last_draft: str = "", feedback: str = "") -> str:
-    """Code writes the facts; the model only words them. Any number it invents sends us back to the facts."""
+    """Code writes the facts; the model only words them. A number it invents gets one retry, naming the
+    number; a second miss sends us back to the facts."""
     facts = [f for l in lines if (f := billing.fact(l))]
     if not facts:
         return billing.all_clear(lines)
+    known = " ".join(facts)
     message = llm.write_message(facts, promise, last_draft, feedback)
-    if not message or not billing.only_known_numbers(message, " ".join(facts)):
+    if message and (bad := billing.unknown_numbers(message, known, promise)):
+        message = llm.write_message(facts, promise, last_draft, feedback,
+                                    rejected=message, bad_numbers=", ".join(f"{n:f}" for n in sorted(bad)))
+    if not message or billing.unknown_numbers(message, known, promise):
         message = billing.fallback_message(facts)
     return billing.mask(message)
 
@@ -88,7 +93,9 @@ def _bill_response(bill: dict) -> dict:
     for l in lines:
         l["fact"] = billing.fact(l)
         l["seen_before"] = seen[l["charge_key"]]
-    return {**bill, "line_items": lines, "message": _latest_message(bill["id"])}
+    # With doubts and no message yet, the page asks the user to check the reading before drafting.
+    doubts = billing.reading_doubts(lines)
+    return {**bill, "line_items": lines, "message": _latest_message(bill["id"]), "reading_doubts": doubts}
 
 
 class UserIn(BaseModel):
@@ -126,6 +133,8 @@ async def create_bill(file: UploadFile = File(...), promise: str = Form(...), pr
     data = await file.read()
     if len(data) > MAX_BYTES:
         raise HTTPException(413, "File is over 4 MB")
+    if billing.is_bare_number(promise):
+        raise HTTPException(422, "Say what the price was for, e.g. \"₹2,000 a month for the 3 kW plan, taxes extra\"")
 
     reading = llm.read_bill(data, file.content_type)
     lines = billing.normalise(reading.get("lines", []))
@@ -152,7 +161,10 @@ async def create_bill(file: UploadFile = File(...), promise: str = Form(...), pr
     saved = supabase.table("line_items").insert([
         {"bill_id": bill["id"], **{c: _json(l[c]) for c in LINE_COLUMNS}} for l in lines
     ]).execute().data
-    _save_message(bill["id"], 1, _draft(saved, promise), saved)
+    # A reading that doesn't add up is far more likely our mistake than the company's: hold the draft
+    # until the user confirms the lines match their bill.
+    if not billing.reading_doubts(saved):
+        _save_message(bill["id"], 1, _draft(saved, promise), saved)
     return _bill_response(bill)
 
 
@@ -164,6 +176,17 @@ def list_bills(user_id: int = Depends(current_user)):
 @app.get("/api/bills/{bill_id}")
 def get_bill(bill_id: int, user_id: int = Depends(current_user)):
     return _bill_response(_get_bill(bill_id, user_id))
+
+
+@app.post("/api/bills/{bill_id}/confirm")
+def confirm_reading(bill_id: int, user_id: int = Depends(current_user)):
+    """The user checked the lines against their bill and they're right: draft the message now."""
+    bill = _get_bill(bill_id, user_id)
+    if _latest_message(bill_id):
+        raise HTTPException(409, "Already drafted")
+    lines = supabase.table("line_items").select("*").eq("bill_id", bill_id).order("id").execute().data
+    _save_message(bill_id, 1, _draft(lines, bill["promise"]), lines)
+    return _bill_response(bill)
 
 
 class ReviseIn(BaseModel):
@@ -178,6 +201,8 @@ def revise_bill(bill_id: int, body: ReviseIn, user_id: int = Depends(current_use
         raise HTTPException(409, "Message already sent")
 
     lines = supabase.table("line_items").select("*").eq("bill_id", bill_id).order("id").execute().data
+    if not last and billing.reading_doubts(lines):
+        raise HTTPException(409, "Confirm the reading first")
     text = _draft(lines, bill["promise"], last["draft_text"] if last else "", body.feedback)
 
     # A new version of the message; the line items are facts and stay as they are.
