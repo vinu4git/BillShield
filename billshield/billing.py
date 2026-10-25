@@ -13,7 +13,8 @@ SUMS = {"subtotal", "total"}
 ROUNDING = Decimal("1.00")  # bills round to the rupee without printing a rounding line
 MISREAD = Decimal("5.00")   # a gap bigger than this is far more likely our misreading than their mistake
 # Set by the government or regulator, not the company's plan. Backs up the model, which sometimes misses them.
-STATUTORY = re.compile(r"\b(?:surcharge|fppca|fppa|fpppa|fuel|duty|cess|gst|cgst|sgst|igst|tax|true ?up|"
+# Not "fuel": an airline's fuel charge is its own, not the government's (golden pair cleartrip-flight).
+STATUTORY = re.compile(r"\b(?:surcharge|fppca|fppa|fpppa|duty|cess|gst|cgst|sgst|igst|tax|true ?up|"
                        r"regulatory|round(?:ing|ed)? ?off)\b")
 
 

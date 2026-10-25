@@ -1,4 +1,7 @@
-"""Golden pairs: bill + promise -> flags, facts and message.
+"""Golden pairs and unit tests: bill + promise -> flags, facts and message.
+
+pairs.json holds golden pairs: real bills from real people. unit_tests.json holds invented bills that each
+pin one rule of billing.py. Both run the same way.
 
     python goldens/run.py          # code only: the model's reading and matching are recorded in pairs.json
     python goldens/run.py --live   # the matching and the message go through the real model (needs GROQ_API_KEY)
@@ -16,7 +19,8 @@ sys.path.insert(0, str(ROOT))
 
 from billshield import billing  # noqa: E402
 
-PAIRS = Path(__file__).with_name("pairs.json")
+SUITES = {"golden pairs": Path(__file__).with_name("pairs.json"),
+          "unit tests": Path(__file__).with_name("unit_tests.json")}
 
 
 def _str(value):
@@ -74,21 +78,25 @@ def main() -> int:
         from dotenv import load_dotenv
         load_dotenv(ROOT / ".env")
 
-    pairs = json.loads(PAIRS.read_text())
-    passed = 0
-    for n, pair in enumerate(pairs, 1):
-        got = run(pair, live)
-        problems = compare(pair["expect"], got)
-        passed += not problems
-        print(f"{n}. {pair['name']}: {'pass' if not problems else 'FAIL'} ({got['outcome']})")
-        for p in problems:
-            print(f"     {p}")
-        if problems and pair.get("known_failure"):
-            print(f"     known failure: {pair['known_failure']}")
-        if live and got.get("message"):
-            print("     message: " + got["message"].replace("\n", "\n              "))
-    print(f"\n{passed} / {len(pairs)} pass")
-    return 0 if passed == len(pairs) else 1
+    failed = 0
+    for suite, path in SUITES.items():
+        pairs = json.loads(path.read_text())
+        passed = 0
+        print(f"{suite} ({path.name})")
+        for n, pair in enumerate(pairs, 1):
+            got = run(pair, live)
+            problems = compare(pair["expect"], got)
+            passed += not problems
+            print(f"  {n}. {pair['name']}: {'pass' if not problems else 'FAIL'} ({got['outcome']})")
+            for p in problems:
+                print(f"       {p}")
+            if problems and pair.get("known_failure"):
+                print(f"       known failure: {pair['known_failure']}")
+            if live and got.get("message"):
+                print("       message: " + got["message"].replace("\n", "\n                "))
+        print(f"  {passed} / {len(pairs)} pass\n")
+        failed += len(pairs) - passed
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

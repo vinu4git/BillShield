@@ -1,183 +1,116 @@
 [
   {
     "name": "cleartrip-flight",
-    "bill": "Cleartrip fare summary for Anand's IndiGo flight (image.png), total ₹9,907",
+    "bill": "Cleartrip fare summary for a classmate's IndiGo flight (image.png), total ₹9,907. Real bill, Move 1.",
     "promise": "Airfare ₹8,010, taxes and airport fees extra",
     "reading": [
-      {"description": "Airfare Charges", "quantity": 1, "amount": 8010.00, "kind": "charge"},
-      {"description": "Fuel Charge", "quantity": 1, "amount": 800.00, "kind": "charge"},
-      {"description": "Aviation Security Fee", "quantity": 1, "amount": 236.00, "kind": "charge"},
-      {"description": "Arrival User Development Fee", "quantity": 1, "amount": 66.00, "kind": "charge"},
-      {"description": "GST for Karnataka", "quantity": 1, "amount": 441.00, "kind": "tax"},
-      {"description": "User Development Fee", "quantity": 1, "amount": 354.00, "kind": "charge"},
-      {"description": "Total Fare", "quantity": 1, "amount": 9907.00, "kind": "total"}
+      {
+        "description": "Airfare Charges",
+        "quantity": 1,
+        "amount": 8010.0,
+        "kind": "charge"
+      },
+      {
+        "description": "Fuel Charge",
+        "quantity": 1,
+        "amount": 800.0,
+        "kind": "charge"
+      },
+      {
+        "description": "Aviation Security Fee",
+        "quantity": 1,
+        "amount": 236.0,
+        "kind": "charge"
+      },
+      {
+        "description": "Arrival User Development Fee",
+        "quantity": 1,
+        "amount": 66.0,
+        "kind": "charge"
+      },
+      {
+        "description": "GST for Karnataka",
+        "quantity": 1,
+        "amount": 441.0,
+        "kind": "tax"
+      },
+      {
+        "description": "User Development Fee",
+        "quantity": 1,
+        "amount": 354.0,
+        "kind": "charge"
+      },
+      {
+        "description": "Total Fare",
+        "quantity": 1,
+        "amount": 9907.0,
+        "kind": "total"
+      }
     ],
     "matches": [
-      {"index": 0, "plain": "The airfare you were quoted", "status": "covered", "promised_amount": 8010, "promised_rate": null},
-      {"index": 1, "plain": "A fuel charge added by the airline", "status": "not_covered", "promised_amount": null, "promised_rate": null},
-      {"index": 2, "plain": "Airport security fee", "status": "covered", "promised_amount": null, "promised_rate": null},
-      {"index": 3, "plain": "Airport fee on arrival", "status": "covered", "promised_amount": null, "promised_rate": null},
-      {"index": 4, "plain": "GST on the ticket", "status": "statutory", "promised_amount": null, "promised_rate": null},
-      {"index": 5, "plain": "Airport development fee", "status": "covered", "promised_amount": null, "promised_rate": null},
-      {"index": 6, "plain": "The total you paid", "status": "covered", "promised_amount": null, "promised_rate": null}
+      {
+        "index": 0,
+        "plain": "The airfare you were quoted",
+        "status": "covered",
+        "promised_amount": 8010,
+        "promised_rate": null
+      },
+      {
+        "index": 1,
+        "plain": "A fuel charge added by the airline",
+        "status": "not_covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 2,
+        "plain": "Airport security fee",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 3,
+        "plain": "Airport fee on arrival",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 4,
+        "plain": "GST on the ticket",
+        "status": "statutory",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 5,
+        "plain": "Airport development fee",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 6,
+        "plain": "The total you paid",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": null
+      }
     ],
     "expect": {
       "outcome": "dispute",
       "flags": [
-        {"description": "Fuel Charge", "flag_reason": "unexplained", "expected_amount": null, "difference": null}
+        {
+          "description": "Fuel Charge",
+          "flag_reason": "unexplained",
+          "expected_amount": null,
+          "difference": null
+        }
       ],
-      "facts": ["'Fuel Charge' for ₹800.00 is not part of what was promised and is unexplained."]
-    },
-    "known_failure": "Fuel is airline-set, not government, but billing.STATUTORY treats any line with \"fuel\" as statutory and never flags it."
-  },
-  {
-    "name": "airtel-addon-pack",
-    "bill": "Airtel postpaid bill: plan ₹499 + VAS Pack ₹199 + GST",
-    "promise": "₹499/month, no add-on packs, GST extra",
-    "reading": [
-      {"description": "Unlimited Plan 499", "quantity": 1, "amount": 499.00, "kind": "charge"},
-      {"description": "VAS Pack - Hello Tunes on +91 98450 12345", "quantity": 1, "amount": 199.00, "kind": "charge"},
-      {"description": "CGST @9%", "quantity": 1, "amount": 62.82, "kind": "tax"},
-      {"description": "SGST @9%", "quantity": 1, "amount": 62.82, "kind": "tax"},
-      {"description": "Total Amount Due", "quantity": 1, "amount": 823.64, "kind": "total"}
-    ],
-    "matches": [
-      {"index": 0, "plain": "Your monthly plan", "status": "covered", "promised_amount": 499, "promised_rate": null},
-      {"index": 1, "plain": "A caller-tune add-on pack", "status": "contradicts", "promised_amount": null, "promised_rate": null},
-      {"index": 2, "plain": "Central GST", "status": "statutory", "promised_amount": null, "promised_rate": null},
-      {"index": 3, "plain": "State GST", "status": "statutory", "promised_amount": null, "promised_rate": null},
-      {"index": 4, "plain": "The total due", "status": "covered", "promised_amount": null, "promised_rate": null}
-    ],
-    "expect": {
-      "outcome": "dispute",
-      "flags": [
-        {"description": "VAS Pack - Hello Tunes on [number]", "flag_reason": "unexplained", "expected_amount": null, "difference": null}
-      ],
-      "facts": ["'VAS Pack - Hello Tunes on [number]' for ₹199.00 is not part of what was promised and is unexplained."]
-    }
-  },
-  {
-    "name": "broadband-price-hike",
-    "bill": "Broadband bill: ₹449 + GST",
-    "promise": "₹399/month for 100 Mbps",
-    "reading": [
-      {"description": "Broadband 100 Mbps", "quantity": 1, "amount": 449.00, "kind": "charge"},
-      {"description": "CGST @9%", "quantity": 1, "amount": 40.41, "kind": "tax"},
-      {"description": "SGST @9%", "quantity": 1, "amount": 40.41, "kind": "tax"},
-      {"description": "Total", "quantity": 1, "amount": 529.82, "kind": "total"}
-    ],
-    "matches": [
-      {"index": 0, "plain": "Your 100 Mbps broadband plan", "status": "covered", "promised_amount": 399, "promised_rate": null},
-      {"index": 1, "plain": "Central GST", "status": "statutory", "promised_amount": null, "promised_rate": null},
-      {"index": 2, "plain": "State GST", "status": "statutory", "promised_amount": null, "promised_rate": null},
-      {"index": 3, "plain": "The total", "status": "covered", "promised_amount": null, "promised_rate": null}
-    ],
-    "expect": {
-      "outcome": "dispute",
-      "flags": [
-        {"description": "Broadband 100 Mbps", "flag_reason": "promise_mismatch", "expected_amount": "399.00", "difference": "50.00"}
-      ],
-      "facts": ["'Broadband 100 Mbps' is charged at ₹449.00 but was promised at ₹399.00, a difference of ₹50.00."]
-    }
-  },
-  {
-    "name": "electricity-rate-times-units",
-    "bill": "Electricity bill: 200 units charged ₹1,400, plus duty",
-    "promise": "₹6.50 per unit",
-    "reading": [
-      {"description": "Energy Charges", "quantity": 200, "amount": 1400.00, "kind": "charge"},
-      {"description": "Electricity Duty @9%", "quantity": 1, "amount": 126.00, "kind": "tax"},
-      {"description": "Net Amount Payable", "quantity": 1, "amount": 1526.00, "kind": "total"}
-    ],
-    "matches": [
-      {"index": 0, "plain": "Electricity used: 200 units", "status": "covered", "promised_amount": null, "promised_rate": 6.50},
-      {"index": 1, "plain": "Government electricity duty", "status": "statutory", "promised_amount": null, "promised_rate": null},
-      {"index": 2, "plain": "The total to pay", "status": "covered", "promised_amount": null, "promised_rate": null}
-    ],
-    "expect": {
-      "outcome": "dispute",
-      "flags": [
-        {"description": "Energy Charges", "flag_reason": "promise_mismatch", "expected_amount": "1300.00", "difference": "100.00"}
-      ],
-      "facts": ["'Energy Charges' is charged at ₹1,400.00 but the promised rate for 200 units comes to ₹1,300.00, a difference of ₹100.00."]
-    }
-  },
-  {
-    "name": "ott-all-clear-with-discount",
-    "bill": "OTT subscription: ₹599 − ₹50 loyalty discount + GST = ₹647.82",
-    "promise": "₹599/month, ₹50 loyalty discount, GST extra",
-    "reading": [
-      {"description": "Premium Subscription", "quantity": 1, "amount": 599.00, "kind": "charge"},
-      {"description": "Loyalty Discount", "quantity": 1, "amount": 50.00, "kind": "discount"},
-      {"description": "GST @18%", "quantity": 1, "amount": 98.82, "kind": "tax"},
-      {"description": "Total", "quantity": 1, "amount": 647.82, "kind": "total"}
-    ],
-    "matches": [
-      {"index": 0, "plain": "Your monthly subscription", "status": "covered", "promised_amount": 599, "promised_rate": null},
-      {"index": 1, "plain": "Your loyalty discount", "status": "covered", "promised_amount": null, "promised_rate": null},
-      {"index": 2, "plain": "GST", "status": "statutory", "promised_amount": null, "promised_rate": null},
-      {"index": 3, "plain": "The total", "status": "covered", "promised_amount": null, "promised_rate": null}
-    ],
-    "expect": {
-      "outcome": "all_clear",
-      "flags": [],
-      "facts": [],
-      "message": "Every line checks out. Charges ₹697.82 minus credits ₹50.00 equals ₹647.82, which matches the bill and the promise."
-    }
-  },
-  {
-    "name": "total-off-by-two",
-    "bill": "Mobile bill: ₹499 + ₹89.82 GST, printed total ₹590.82",
-    "promise": "₹499/month, GST extra",
-    "reading": [
-      {"description": "Monthly Plan", "quantity": 1, "amount": 499.00, "kind": "charge"},
-      {"description": "GST @18%", "quantity": 1, "amount": 89.82, "kind": "tax"},
-      {"description": "Total", "quantity": 1, "amount": 590.82, "kind": "total"}
-    ],
-    "matches": [
-      {"index": 0, "plain": "Your monthly plan", "status": "covered", "promised_amount": 499, "promised_rate": null},
-      {"index": 1, "plain": "GST", "status": "statutory", "promised_amount": null, "promised_rate": null},
-      {"index": 2, "plain": "The total", "status": "covered", "promised_amount": null, "promised_rate": null}
-    ],
-    "expect": {
-      "outcome": "dispute",
-      "flags": [
-        {"description": "Total", "flag_reason": "total_mismatch", "expected_amount": "588.82", "difference": "2.00"}
-      ],
-      "facts": ["'Total' is printed as ₹590.82 but the lines add up to ₹588.82, a difference of ₹2.00."]
-    }
-  },
-  {
-    "name": "cleartrip-misread",
-    "bill": "The same Cleartrip bill, but the reading missed the ₹354 User Development Fee",
-    "promise": "Airfare ₹8,010, taxes and airport fees extra",
-    "reading": [
-      {"description": "Airfare Charges", "quantity": 1, "amount": 8010.00, "kind": "charge"},
-      {"description": "Fuel Charge", "quantity": 1, "amount": 800.00, "kind": "charge"},
-      {"description": "Aviation Security Fee", "quantity": 1, "amount": 236.00, "kind": "charge"},
-      {"description": "Arrival User Development Fee", "quantity": 1, "amount": 66.00, "kind": "charge"},
-      {"description": "GST for Karnataka", "quantity": 1, "amount": 441.00, "kind": "tax"},
-      {"description": "Total Fare", "quantity": 1, "amount": 9907.00, "kind": "total"}
-    ],
-    "matches": [
-      {"index": 0, "plain": "The airfare you were quoted", "status": "covered", "promised_amount": 8010, "promised_rate": null},
-      {"index": 1, "plain": "A fuel charge added by the airline", "status": "not_covered", "promised_amount": null, "promised_rate": null},
-      {"index": 2, "plain": "Airport security fee", "status": "covered", "promised_amount": null, "promised_rate": null},
-      {"index": 3, "plain": "Airport fee on arrival", "status": "covered", "promised_amount": null, "promised_rate": null},
-      {"index": 4, "plain": "GST on the ticket", "status": "statutory", "promised_amount": null, "promised_rate": null},
-      {"index": 5, "plain": "The total you paid", "status": "covered", "promised_amount": null, "promised_rate": null}
-    ],
-    "expect": {
-      "outcome": "check_reading",
-      "doubts": ["'Total Fare' is printed as ₹9,907.00 but the lines we read add up to ₹9,553.00."]
-    }
-  },
-  {
-    "name": "bare-number-promise",
-    "bill": "Any bill: the promise is checked before the bill is read",
-    "promise": "8010",
-    "expect": {
-      "outcome": "follow_up"
+      "facts": [
+        "'Fuel Charge' for ₹800.00 is not part of what was promised and is unexplained."
+      ]
     }
   }
 ]
