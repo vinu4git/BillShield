@@ -14,8 +14,10 @@ ROUNDING = Decimal("1.00")  # bills round to the rupee without printing a roundi
 MISREAD = Decimal("5.00")   # a gap bigger than this is far more likely our misreading than their mistake
 # Set by the government or regulator, not the company's plan. Backs up the model, which sometimes misses them.
 # Not "fuel": an airline's fuel charge is its own, not the government's (golden pair cleartrip-flight).
-STATUTORY = re.compile(r"\b(?:surcharge|fppca|fppa|fpppa|duty|cess|gst|cgst|sgst|igst|tax|true ?up|"
+STATUTORY = re.compile(r"\b(?:surcharge|fpca|fppca|fppa|fpppa|duty|cess|gst|cgst|sgst|igst|tax|true ?up|"
                        r"regulatory|round(?:ing|ed)? ?off)\b")
+DISCOUNT = re.compile(r"\b(?:discount|cash ?back)\b|\d\s*%\s*off\b", re.I)
+NO_DISCOUNT = re.compile(r"\b(?:no|not|without)\b[\w\s]{0,20}\b(?:discount|cash ?back)\b", re.I)
 
 
 def money(value) -> Decimal:
@@ -162,6 +164,14 @@ def fact(l: dict) -> str | None:
     if l.get("flag_reason") == "unexplained":
         return f"'{desc}' for {fmt(amount)} is not part of what was promised and is unexplained."
     return None
+
+
+def bill_facts(lines: list[dict], promise: str) -> list[str]:
+    """Facts about what's missing from the bill, so there is no line to flag (golden pair bigbasket-no-discount)."""
+    promised = DISCOUNT.search(promise) and not NO_DISCOUNT.search(promise)
+    if promised and not any(l["kind"] == "discount" and money(l["amount"]) < 0 for l in lines):
+        return ["A discount was promised, but this bill shows no discount applied."]
+    return []
 
 
 def all_clear(lines: list[dict]) -> str:

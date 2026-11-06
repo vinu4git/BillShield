@@ -45,7 +45,7 @@ def run(pair: dict, live: bool) -> dict:
         "flags": [{"description": l["description"], "flag_reason": l["flag_reason"],
                    "expected_amount": _str(l["expected_amount"]), "difference": _str(l["difference"])}
                   for l in lines if l["is_flagged"]],
-        "facts": [f for l in lines if (f := billing.fact(l))],
+        "facts": [f for l in lines if (f := billing.fact(l))] + billing.bill_facts(lines, promise),
     }
     if doubts := billing.reading_doubts(lines):
         return {**got, "outcome": "check_reading", "doubts": doubts}

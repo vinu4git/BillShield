@@ -26,7 +26,9 @@ Return JSON: {"provider": str | null, "period_start": "YYYY-MM-DD" | null, "peri
 
 MATCH_PROMPT = """You compare bill lines to what the customer was promised. Do not do any arithmetic.
 For each line, by its index, rewrite it in plain words and give it one status:
-- "covered": the promise mentions this charge or plainly includes it.
+- "covered": the promise mentions this charge or plainly includes it. If the promise is only about a discount,
+  offer or cashback and names no charges, the products or services bought are "covered"; a fee added on top of them
+  (handling, delivery, convenience) is "not_covered".
 - "statutory": a tax, duty, government or regulator-set charge or adjustment (GST, electricity duty,
   surcharges, fuel cost adjustment, true-up charges), or a rounding adjustment.
 - "carried_over": not a new charge: arrears, previous balance, payments received, bill corrections.

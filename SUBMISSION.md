@@ -13,11 +13,12 @@ My classmate wanted it to be changed to "check the bill and let me know if there
 Golden pairs (link): https://github.com/vinu4git/BillShield/tree/main/goldens
 Run `python goldens/run.py` (or `--live` to send the matching and the message through the real model).
 
-Golden pair, a real bill (`goldens/pairs.json`):
+Golden pairs, real bills (`goldens/pairs.json`):
 
 | # | Pair | Input (promise → bill) | Golden output | Result |
 |---|---|---|---|---|
 | 1 | cleartrip-flight | "Airfare ₹8,010, taxes and airport fees extra" → the classmate's Cleartrip fare summary (6 lines, total ₹9,907) | Lines add up to ₹9,907, so the total checks out (my 9,707 by hand was a slip). Fuel Charge ₹800 flagged **unexplained**: the airline sets it, not the government | pass, after a fix: the code used to treat any "fuel" line as a government charge and never flagged it. I took "fuel" out of the rule |
+| 2 | bigbasket-no-discount | "I was promised 20% discount" → the classmate's Big Basket invoice (item ₹405, handling ₹6 inside the ₹411 total, You Saved ₹0) | Total checks out. Handling ₹6 flagged **unexplained**. Message says no discount was applied. The item they bought is not flagged | pass, after two fixes: code now checks for a promised discount, and the matching prompt counts the items bought as covered when a promise is only about a discount |
 
 Unit tests, invented bills that each pin one rule of billing.py (`goldens/unit_tests.json`). These are not golden pairs:
 
@@ -30,8 +31,11 @@ Unit tests, invented bills that each pin one rule of billing.py (`goldens/unit_t
 | 5 | total-off-by-two | "₹499/month, GST extra" → printed total ₹2 more than the lines | **Wrong**: total printed ₹590.82, lines add up to ₹588.82, difference ₹2.00 | pass |
 | 6 | cleartrip-misread | The same Cleartrip bill, with the ₹354 User Development Fee missed in reading | Lines miss the printed total by ₹354 (more than ₹5): check the reading, no message drafted | pass |
 | 7 | bare-number-promise | "8010" | Follow-up: ask what the price was for before reading the bill | pass |
+| 8 | fpca-not-unexplained | "₹6.50 per unit" → 200 units ₹1,300 + FPCA Charges ₹50 | No flags: FPCA is set by the regulator | pass |
+| 9 | discount-promised-no-discount-line | "10% off my first month" → Broadband ₹500, no discount line | Message says no discount was applied | pass |
+| 10 | promise-rules-out-discount | "₹599/month, no discount this year" → Plan ₹599 | No flags. All-clear message | pass |
 
-Next: two more real bills from cohort-mates, as golden pairs.
+Next: one more real bill from a cohort-mate, as a golden pair.
 
 MOVE 2, NEEDS FIRST
 Need list:
@@ -62,7 +66,7 @@ AI decides (billshield/llm.py):
 
 My call on wrong vs unexplained, and its failure mode:
 "Wrong" is something code can prove: the line's price differs from the promised price (promise_mismatch), or a printed total differs from the lines above it (total_mismatch). "Unexplained" is a charge the promise doesn't cover. We don't call it wrong; we ask the company to explain it. These are never flagged as unexplained: ₹0 lines, credits, taxes, statutory charges (by the model's reading, or by name: GST, cess, duty, FPPCA, surcharge…) and carried-over balances.
-Failure mode: false negatives hidden as "statutory". A company add-on with a government-sounding name (e.g. "Regulatory Fee", "Fuel surcharge" on a plan that included it) gets waved through. And when the promise is vague, the model can mark a real extra as "covered".
+Failure mode: false negatives hidden as "statutory". A company add-on with a government-sounding name (e.g. "Regulatory Fee", "Fuel surcharge" on a plan that included it) gets waved through. And when the promise is vague, the model can mark a real extra as "covered". A promise that was never kept can also leave no line to flag: Big Basket's ₹0 "You Saved" line was skipped, so code now checks for a promised discount itself.
 
 MOVE 4, THE DATA
 
@@ -93,6 +97,7 @@ Evidence: rows from the `messages` table (Supabase), pulled on 24 Oct. Names lef
 > Thank you.
 
 - What went wrong: the item they bought was flagged as "unexplained", because a discount promise says nothing about products. They asked Revise to make it simpler, but version 2 came back the same: the plain fallback text, which is used when the model's rewrite fails the number check.
+- Checked by hand against the invoice on 6 Nov: the ₹6 gap was our misreading too. The item is ₹405 and the ₹6 handling is inside the ₹411, so the bill adds up. The real problem was missed: "You Saved" is ₹0, so the promised discount was never applied.
 
 **Stranger** (BESCOM electricity bill, 19 Oct)
 - Promise typed: "2000"

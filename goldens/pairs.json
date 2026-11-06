@@ -112,5 +112,107 @@
         "'Fuel Charge' for ₹800.00 is not part of what was promised and is unexplained."
       ]
     }
+  },
+  {
+    "name": "bigbasket-no-discount",
+    "bill": "Big Basket invoice for a classmate's order, total ₹411: item ₹405, handling ₹6 (inside the ₹411), You Saved ₹0. Real bill, Move 5.",
+    "promise": "I was promised 20% discount",
+    "reading": [
+      {
+        "description": "Finish Dishwasher Salt 2 kg",
+        "quantity": 1,
+        "amount": 405.0,
+        "kind": "charge"
+      },
+      {
+        "description": "Handling Charge",
+        "quantity": 1,
+        "amount": 6.0,
+        "kind": "charge"
+      },
+      {
+        "description": "Sub Total",
+        "quantity": 1,
+        "amount": 411.0,
+        "kind": "subtotal"
+      },
+      {
+        "description": "Final Total",
+        "quantity": 1,
+        "amount": 411.0,
+        "kind": "total"
+      },
+      {
+        "description": "You Saved",
+        "quantity": 1,
+        "amount": 0.0,
+        "kind": "discount"
+      },
+      {
+        "description": "Total Invoice value (In Figure)",
+        "quantity": 1,
+        "amount": 411.0,
+        "kind": "total"
+      }
+    ],
+    "matches": [
+      {
+        "index": 0,
+        "plain": "Finish Dishwasher Salt 2 kg, quantity 1, amount 405.00",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 1,
+        "plain": "Handling Charge, quantity 1, amount 6.00",
+        "status": "not_covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 2,
+        "plain": "Sub Total, quantity 1, amount 411.00",
+        "status": "not_covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 3,
+        "plain": "Final Total, quantity 1, amount 411.00",
+        "status": "not_covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 4,
+        "plain": "You Saved, quantity 1, amount 0.00",
+        "status": "not_covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 5,
+        "plain": "Total Invoice value (In Figure), quantity 1, amount 411.00",
+        "status": "not_covered",
+        "promised_amount": null,
+        "promised_rate": null
+      }
+    ],
+    "expect": {
+      "outcome": "dispute",
+      "flags": [
+        {
+          "description": "Handling Charge",
+          "flag_reason": "unexplained",
+          "expected_amount": null,
+          "difference": null
+        }
+      ],
+      "facts": [
+        "'Handling Charge' for ₹6.00 is not part of what was promised and is unexplained.",
+        "A discount was promised, but this bill shows no discount applied."
+      ]
+    }
   }
 ]

@@ -453,5 +453,140 @@
     "expect": {
       "outcome": "follow_up"
     }
+  },
+  {
+    "name": "fpca-not-unexplained",
+    "bill": "Electricity: 200 units at ₹6.50 = ₹1,300, FPCA Charges ₹50, total ₹1,350",
+    "promise": "₹6.50 per unit",
+    "reading": [
+      {
+        "description": "Energy Charges",
+        "quantity": 200,
+        "amount": 1300.0,
+        "kind": "charge"
+      },
+      {
+        "description": "FPCA Charges",
+        "quantity": 1,
+        "amount": 50.0,
+        "kind": "charge"
+      },
+      {
+        "description": "Net Payable",
+        "quantity": 1,
+        "amount": 1350.0,
+        "kind": "total"
+      }
+    ],
+    "matches": [
+      {
+        "index": 0,
+        "plain": "Electricity you used",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": 6.5
+      },
+      {
+        "index": 1,
+        "plain": "A fuel cost adjustment",
+        "status": "not_covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 2,
+        "plain": "The total to pay",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": null
+      }
+    ],
+    "expect": {
+      "outcome": "all_clear",
+      "flags": [],
+      "facts": []
+    }
+  },
+  {
+    "name": "discount-promised-no-discount-line",
+    "bill": "Broadband ₹500, no discount line, total ₹500",
+    "promise": "10% off my first month",
+    "reading": [
+      {
+        "description": "Broadband Plan",
+        "quantity": 1,
+        "amount": 500.0,
+        "kind": "charge"
+      },
+      {
+        "description": "Total",
+        "quantity": 1,
+        "amount": 500.0,
+        "kind": "total"
+      }
+    ],
+    "matches": [
+      {
+        "index": 0,
+        "plain": "Your broadband plan",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": null
+      },
+      {
+        "index": 1,
+        "plain": "The total to pay",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": null
+      }
+    ],
+    "expect": {
+      "outcome": "dispute",
+      "flags": [],
+      "facts": [
+        "A discount was promised, but this bill shows no discount applied."
+      ]
+    }
+  },
+  {
+    "name": "promise-rules-out-discount",
+    "bill": "Plan ₹599, no discount line, total ₹599",
+    "promise": "₹599/month, no discount this year",
+    "reading": [
+      {
+        "description": "Monthly Plan",
+        "quantity": 1,
+        "amount": 599.0,
+        "kind": "charge"
+      },
+      {
+        "description": "Total",
+        "quantity": 1,
+        "amount": 599.0,
+        "kind": "total"
+      }
+    ],
+    "matches": [
+      {
+        "index": 0,
+        "plain": "Your monthly plan",
+        "status": "covered",
+        "promised_amount": 599,
+        "promised_rate": null
+      },
+      {
+        "index": 1,
+        "plain": "The total to pay",
+        "status": "covered",
+        "promised_amount": null,
+        "promised_rate": null
+      }
+    ],
+    "expect": {
+      "outcome": "all_clear",
+      "flags": [],
+      "facts": []
+    }
   }
 ]

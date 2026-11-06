@@ -61,7 +61,7 @@ def _latest_message(bill_id: int) -> dict | None:
 def _draft(lines: list[dict], promise: str, last_draft: str = "", feedback: str = "") -> str:
     """Code writes the facts; the model only words them. A number it invents gets one retry, naming the
     number; a second miss sends us back to the facts."""
-    facts = [f for l in lines if (f := billing.fact(l))]
+    facts = [f for l in lines if (f := billing.fact(l))] + billing.bill_facts(lines, promise)
     if not facts:
         return billing.all_clear(lines)
     known = " ".join(facts)
